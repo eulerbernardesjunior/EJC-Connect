@@ -11,6 +11,7 @@ import {
 } from "react-router-dom";
 import ReactCrop, { Crop, PercentCrop, PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
+import { HelpContent, HelpTopic, getHelpContent } from "./helpContent";
 
 type TeamType = "TRABALHO" | "CIRCULO";
 type ThemeMode = "light" | "dark";
@@ -672,6 +673,7 @@ function AppShell() {
 
   const [crop, setCrop] = useState<CropState | null>(null);
   const [cropUploading, setCropUploading] = useState(false);
+  const [activeHelp, setActiveHelp] = useState<HelpContent | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -795,6 +797,14 @@ function AppShell() {
 
   function handleLogout() {
     clearSession();
+  }
+
+  function openHelp(topic: HelpTopic) {
+    setActiveHelp(getHelpContent(topic));
+  }
+
+  function closeHelp() {
+    setActiveHelp(null);
   }
 
   async function refreshEncounters() {
@@ -1502,7 +1512,9 @@ function AppShell() {
       })),
     setLoginForm,
     handleLogin,
-    handleLogout
+    handleLogout,
+    openHelp,
+    closeHelp
   };
 
   const canViewDashboard = can(PERMISSIONS.DASHBOARD_VIEW);
@@ -1532,7 +1544,18 @@ function AppShell() {
   }
 
   if (!currentUser) {
-    return <LoginScreen loginForm={loginForm} onChange={setLoginForm} onSubmit={handleLogin} error={error} />;
+    return (
+      <>
+        <LoginScreen
+          loginForm={loginForm}
+          onChange={setLoginForm}
+          onSubmit={handleLogin}
+          error={error}
+          onHelp={() => openHelp("LOGIN")}
+        />
+        <HelpModal content={activeHelp} onClose={closeHelp} />
+      </>
+    );
   }
 
   return (
@@ -1653,6 +1676,8 @@ function AppShell() {
           </div>
         </div>
       )}
+
+      <HelpModal content={activeHelp} onClose={closeHelp} />
     </div>
   );
 }
@@ -1661,17 +1686,22 @@ function LoginScreen({
   loginForm,
   onChange,
   onSubmit,
-  error
+  error,
+  onHelp
 }: {
   loginForm: { email: string; senha: string };
   onChange: (value: { email: string; senha: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   error: string;
+  onHelp: () => void;
 }) {
   return (
     <div className="auth-layout">
       <div className="auth-card">
-        <h2>Acesso ao EJC Connect</h2>
+        <div className="panel-head">
+          <h2>Acesso ao EJC Connect</h2>
+          <HelpButton onClick={onHelp} label="Ajuda de login" />
+        </div>
         <p className="muted">Entre com seu usuário para acessar o painel administrativo.</p>
         <form className="grid-form" onSubmit={onSubmit}>
           <label>
@@ -1702,6 +1732,42 @@ function LoginScreen({
   );
 }
 
+function HelpButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button type="button" className="help-trigger ghost" onClick={onClick} aria-label={label} title={label}>
+      ?
+    </button>
+  );
+}
+
+function HelpModal({ content, onClose }: { content: HelpContent | null; onClose: () => void }) {
+  if (!content) return null;
+
+  return (
+    <div className="crop-backdrop help-backdrop" onClick={onClose}>
+      <div className="help-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="panel-head help-head">
+          <div>
+            <h2>{content.title}</h2>
+            <p className="muted">{content.subtitle}</p>
+          </div>
+          <button type="button" className="ghost help-close" onClick={onClose}>
+            Fechar
+          </button>
+        </div>
+        <div className="help-body">
+          {content.sections.map((section, index) => (
+            <section className="help-section" key={`${section.title}-${index}`}>
+              <h3>{section.title}</h3>
+              <div className="help-html" dangerouslySetInnerHTML={{ __html: section.html }} />
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccessDeniedScreen() {
   return (
     <div className="panel">
@@ -1723,17 +1789,20 @@ function DashboardScreen({ shell, actions }: { shell: any; actions: any }) {
       <div className="panel">
         <div className="panel-head">
           <h2>Dashboard</h2>
-          <select
-            value={filterEncounterId || ""}
-            onChange={(event) => setFilterEncounterId(event.target.value ? Number(event.target.value) : null)}
-          >
-            <option value="">Todos os encontros</option>
-            {shell.encounters.map((encounter: Encounter) => (
-              <option key={encounter.id} value={encounter.id}>
-                {displayEncounterName(encounter)}
-              </option>
-            ))}
-          </select>
+          <div className="actions-row">
+            <select
+              value={filterEncounterId || ""}
+              onChange={(event) => setFilterEncounterId(event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">Todos os encontros</option>
+              {shell.encounters.map((encounter: Encounter) => (
+                <option key={encounter.id} value={encounter.id}>
+                  {displayEncounterName(encounter)}
+                </option>
+              ))}
+            </select>
+            <HelpButton onClick={() => actions.openHelp("DASHBOARD")} label="Ajuda do dashboard" />
+          </div>
         </div>
         <div className="stats-grid">
           <article className="stat-card"><span>Encontros</span><strong>{shell.dashboard.encontros}</strong></article>
@@ -1780,6 +1849,15 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
   return (
     <section className="page-stack">
       <div className="panel">
+        <div className="panel-head">
+          <h2>Configurações</h2>
+          <HelpButton
+            onClick={() =>
+              actions.openHelp(tab === "USERS" ? "SETTINGS_USERS" : tab === "PDF_TITLE" ? "SETTINGS_PDF" : "SETTINGS_AUDIT")
+            }
+            label="Ajuda de configurações"
+          />
+        </div>
         <div className="settings-tabs">
           <button
             className={`settings-tab ${tab === "USERS" ? "active" : ""}`.trim()}
@@ -2176,7 +2254,10 @@ function EncountersScreen({ shell, actions }: { shell: any; actions: any }) {
   return (
     <section className="page-stack">
       <div className="panel">
-        <h2>Novo encontro</h2>
+        <div className="panel-head">
+          <h2>Novo encontro</h2>
+          <HelpButton onClick={() => actions.openHelp("ENCOUNTERS")} label="Ajuda de encontros" />
+        </div>
         <form className="grid-form three" onSubmit={actions.handleCreateEncounter}>
           <label>
             Nome do encontro
@@ -2281,7 +2362,10 @@ function EncounterHubScreen({ shell, actions }: { shell: any; actions: any }) {
       <div className="panel">
         <div className="panel-head">
           <h2>{displayEncounterName(encounter)}</h2>
-          <Link className="as-btn" to="/encounters">Voltar</Link>
+          <div className="actions-row">
+            <HelpButton onClick={() => actions.openHelp("ENCOUNTER_HUB")} label="Ajuda da gestão do encontro" />
+            <Link className="as-btn" to="/encounters">Voltar</Link>
+          </div>
         </div>
         <div className="cards-grid">
           {canTeams && (
@@ -2341,7 +2425,10 @@ function TeamListScreen({
     <section className="page-stack">
       {isCircle && (
         <div className="panel">
-          <h2>Importação geral de círculos</h2>
+          <div className="panel-head">
+            <h2>Importação geral de círculos</h2>
+            <HelpButton onClick={() => actions.openHelp("CIRCLE_LIST")} label="Ajuda de círculos" />
+          </div>
           <p className="muted">Importe um único arquivo para criar/atualizar todos os círculos deste encontro.</p>
           <div className="actions-row">
             <label className="file-field">
@@ -2365,7 +2452,10 @@ function TeamListScreen({
 
       <div className="panel two-col">
         <div>
-          <h2>{shell.teamForm.id > 0 ? `Editar ${title}` : `Novo ${title}`}</h2>
+          <div className="panel-head">
+            <h2>{shell.teamForm.id > 0 ? `Editar ${title}` : `Novo ${title}`}</h2>
+            {!isCircle && <HelpButton onClick={() => actions.openHelp("TEAM_LIST")} label="Ajuda de equipes" />}
+          </div>
           <form className="grid-form" onSubmit={(event) => actions.handleSaveTeam(encounterId, type, event)}>
             <label>
               Nome
@@ -2522,6 +2612,10 @@ function TeamDetailScreen({
         <div className="panel-head">
           <h2>{title}: {team.nome}</h2>
           <div className="actions-row">
+            <HelpButton
+              onClick={() => actions.openHelp(isCircle ? "CIRCLE_DETAIL" : "TEAM_DETAIL")}
+              label={isCircle ? "Ajuda do círculo" : "Ajuda da equipe"}
+            />
             <Link className="as-btn" to={`/encounters/${encounterId}/${parentPath}`}>Voltar</Link>
             <button disabled={!canGeneratePdf} onClick={() => actions.handlePreviewTeamPdf(team.id)}>
               Visualizar quadrante da equipe
@@ -2820,7 +2914,10 @@ function AssetsScreen({ shell, actions }: { shell: any; actions: any }) {
       <div className="panel">
         <div className="panel-head">
           <h2>Capas e Artes A4</h2>
-          <Link className="as-btn" to={`/encounters/${encounterId}`}>Voltar</Link>
+          <div className="actions-row">
+            <HelpButton onClick={() => actions.openHelp("ASSETS")} label="Ajuda de capas e artes" />
+            <Link className="as-btn" to={`/encounters/${encounterId}`}>Voltar</Link>
+          </div>
         </div>
         <form className="grid-form two" onSubmit={(event) => actions.handleSaveAsset(encounterId, event)}>
           <label>
