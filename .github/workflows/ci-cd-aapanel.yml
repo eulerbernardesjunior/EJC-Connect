@@ -1,0 +1,110 @@
+name: EJC Connect CI/CD (aaPanel)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22"
+  DEPLOY_ARCHIVE: "/tmp/ejc-connect-deploy.tgz"
+  APP_DIR_DEFAULT: "/www/wwwroot/ejc-connect"
+  HEALTH_URL_DEFAULT: "http://127.0.0.1:8080/api/health"
+  PROJECT_NAME_DEFAULT: "ejc-connect"
+
+jobs:
+  validate:
+    name: Validate Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Backend syntax check
+        working-directory: backend
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+  deploy:
+    name: Deploy To aaPanel
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build deploy archive
+        run: |
+          tar -czf ejc-connect-deploy.tgz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='**/node_modules' \
+            --exclude='**/dist' \
+            --exclude='tmp' \
+            --exclude='skills' \
+            --exclude='*.log' \
+            backend frontend deploy docker-compose.yml
+
+      - name: Upload archive to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.AAPANEL_HOST }}
+          username: ${{ secrets.AAPANEL_USER }}
+          port: ${{ secrets.AAPANEL_PORT }}
+          key: ${{ secrets.AAPANEL_SSH_PRIVATE_KEY }}
+          source: "ejc-connect-deploy.tgz"
+          target: "/tmp"
+          overwrite: true
+
+      - name: Run deploy on server
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ secrets.AAPANEL_APP_DIR }}
+          HEALTH_URL: ${{ secrets.AAPANEL_HEALTH_URL }}
+          PROJECT_NAME: ${{ secrets.AAPANEL_PROJECT_NAME }}
+          DEPLOY_ARCHIVE: ${{ env.DEPLOY_ARCHIVE }}
+          APP_DIR_DEFAULT: ${{ env.APP_DIR_DEFAULT }}
+          HEALTH_URL_DEFAULT: ${{ env.HEALTH_URL_DEFAULT }}
+          PROJECT_NAME_DEFAULT: ${{ env.PROJECT_NAME_DEFAULT }}
+        with:
+          host: ${{ secrets.AAPANEL_HOST }}
+          username: ${{ secrets.AAPANEL_USER }}
+          port: ${{ secrets.AAPANEL_PORT }}
+          key: ${{ secrets.AAPANEL_SSH_PRIVATE_KEY }}
+          envs: APP_DIR,HEALTH_URL,PROJECT_NAME,DEPLOY_ARCHIVE,APP_DIR_DEFAULT,HEALTH_URL_DEFAULT,PROJECT_NAME_DEFAULT
+          script_stop: true
+          script: |
+            set -euo pipefail
+            EFFECTIVE_APP_DIR="${APP_DIR:-$APP_DIR_DEFAULT}"
+            EFFECTIVE_HEALTH_URL="${HEALTH_URL:-$HEALTH_URL_DEFAULT}"
+            EFFECTIVE_PROJECT_NAME="${PROJECT_NAME:-$PROJECT_NAME_DEFAULT}"
+            mkdir -p /tmp/ejc-connect-cicd
+            tar -xzf "$DEPLOY_ARCHIVE" -C /tmp/ejc-connect-cicd
+            chmod +x /tmp/ejc-connect-cicd/deploy/remote_deploy.sh
+            APP_DIR="$EFFECTIVE_APP_DIR" \
+            HEALTH_URL="$EFFECTIVE_HEALTH_URL" \
+            PROJECT_NAME="$EFFECTIVE_PROJECT_NAME" \
+            ARCHIVE_PATH="$DEPLOY_ARCHIVE" \
+            bash /tmp/ejc-connect-cicd/deploy/remote_deploy.sh
