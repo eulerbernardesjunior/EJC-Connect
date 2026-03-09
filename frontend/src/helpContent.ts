@@ -196,6 +196,7 @@ const HELP_CONTENT: Record<HelpTopic, HelpContent> = {
         html: `
           <ul>
             <li>Envie foto da equipe (crop 15x10).</li>
+            <li>Use <strong>Validar arquivo</strong> antes de importar para ver diferenças e regras da equipe.</li>
             <li>Cadastre membros manualmente ou por planilha.</li>
             <li>Edite/exclua membros por cargo.</li>
             <li>Use <strong>Visualizar quadrante da equipe</strong> para PDF parcial.</li>
@@ -257,6 +258,7 @@ const HELP_CONTENT: Record<HelpTopic, HelpContent> = {
         html: `
           <ul>
             <li>Envie o cartaz do círculo (crop A4).</li>
+            <li>Use <strong>Validar arquivo</strong> antes de importar para checar diferenças por cargo.</li>
             <li>Cadastre/importe membros e mantenha agrupamento por cargo.</li>
             <li>Envie foto dos membros para uso no PDF.</li>
             <li>Use o botão de quadrante para gerar PDF parcial do círculo.</li>

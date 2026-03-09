@@ -851,6 +851,24 @@ button:disabled {
   background: rgba(122, 31, 61, 0.08);
 }
 
+.help-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.import-validation-inline {
+  margin-top: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--panel-soft);
+  display: grid;
+  gap: 8px;
+}
+
 .toggle {
   display: flex;
   align-items: center;

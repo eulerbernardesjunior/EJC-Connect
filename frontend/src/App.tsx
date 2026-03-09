@@ -103,6 +103,57 @@ type MembersImportResponse = {
   estatisticas: MembersImportStats;
 };
 
+type ImportValidationSeverity = "error" | "warning" | "info";
+
+type ImportValidationDifference = {
+  severity: ImportValidationSeverity;
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+};
+
+type ImportValidationCargo = {
+  cargo: string;
+  mode: "CASAL" | "INDIVIDUAL";
+  memberRows: number;
+  registrosPrevistos: number;
+  casaisPrevistos: number;
+  individuaisPrevistos: number;
+  sobrasCasal: number;
+};
+
+type MembersImportValidation = {
+  team: {
+    id: number;
+    nome: string;
+    tipo: TeamType;
+    profileCode: string;
+    profileLabel: string;
+    rules: string[];
+  };
+  summary: {
+    linhasLidas: number;
+    cabecalhosDetectados: number;
+    labelsIgnorados: number;
+    linhasComMembros: number;
+    linhasSemCargo: number;
+    cargosDetectados: number;
+    registrosPrevistos: number;
+    casaisPrevistos: number;
+    individuaisPrevistos: number;
+  };
+  cargos: ImportValidationCargo[];
+  differences: ImportValidationDifference[];
+  errors: string[];
+  warnings: string[];
+};
+
+type MembersImportValidationResponse = {
+  success: boolean;
+  message: string;
+  diagnostico: MembersImportValidation;
+};
+
 type CirclesImportStats = {
   circulosCriados: number;
   membrosCriados: number;
@@ -670,6 +721,10 @@ function AppShell() {
   const [pdfTitleSettings, setPdfTitleSettings] = useState<PdfTitleSettings>({ ...EMPTY_PDF_TITLE_SETTINGS });
   const [importFile, setImportFile] = useState<File | null>(null);
   const [circleImportFile, setCircleImportFile] = useState<File | null>(null);
+  const [importValidation, setImportValidation] = useState<MembersImportValidation | null>(null);
+  const [importValidationTeamId, setImportValidationTeamId] = useState<number | null>(null);
+  const [importValidationOpen, setImportValidationOpen] = useState(false);
+  const [importValidating, setImportValidating] = useState(false);
 
   const [crop, setCrop] = useState<CropState | null>(null);
   const [cropUploading, setCropUploading] = useState(false);
@@ -754,6 +809,10 @@ function AppShell() {
     setAuditTotal(0);
     setAuditOffset(0);
     setAuditFilters({ ...DEFAULT_AUDIT_FILTERS });
+    setImportValidation(null);
+    setImportValidationTeamId(null);
+    setImportValidationOpen(false);
+    setImportValidating(false);
     setMessage("");
     setError("");
   }
@@ -805,6 +864,17 @@ function AppShell() {
 
   function closeHelp() {
     setActiveHelp(null);
+  }
+
+  function clearImportValidation() {
+    setImportValidation(null);
+    setImportValidationTeamId(null);
+    setImportValidationOpen(false);
+  }
+
+  function openImportValidationReport() {
+    if (!importValidation) return;
+    setImportValidationOpen(true);
   }
 
   async function refreshEncounters() {
@@ -1142,6 +1212,45 @@ function AppShell() {
     }
   }
 
+  async function handleValidateImportMembers(encounterId: number, teamId: number) {
+    if (!importFile) {
+      setError("Selecione um arquivo antes de validar.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("encounterId", String(encounterId));
+    formData.append("teamId", String(teamId));
+    formData.append("file", importFile);
+
+    setImportValidating(true);
+    try {
+      const response = await authRequest<MembersImportValidationResponse>("/api/imports/validate", {
+        method: "POST",
+        body: formData
+      });
+      setImportValidation(response.diagnostico);
+      setImportValidationTeamId(teamId);
+      setImportValidationOpen(true);
+
+      const blockingCount = (response.diagnostico.differences || []).filter(
+        (item) => item.severity === "error"
+      ).length;
+      const warningCount = (response.diagnostico.differences || []).filter(
+        (item) => item.severity === "warning"
+      ).length;
+
+      success(
+        `Validação concluída: ${response.diagnostico.summary.registrosPrevistos} registro(s) previsto(s), ` +
+          `${blockingCount} erro(s), ${warningCount} alerta(s).`
+      );
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setImportValidating(false);
+    }
+  }
+
   async function handleImportMembers(encounterId: number, teamId: number) {
     if (!importFile) return;
     const formData = new FormData();
@@ -1165,6 +1274,7 @@ function AppShell() {
       }
 
       setImportFile(null);
+      clearImportValidation();
       success(
         `Importação concluída: ${stats.total} membro(s), ${stats.casais} casal(is), ${stats.individuais} individual(is).`
       );
@@ -1453,6 +1563,10 @@ function AppShell() {
     pdfTitleSettings,
     importFile,
     circleImportFile,
+    importValidation,
+    importValidationTeamId,
+    importValidationOpen,
+    importValidating,
     crop,
     cropUploading,
     currentUser,
@@ -1470,6 +1584,7 @@ function AppShell() {
     setAuditFilters,
     setImportFile,
     setCircleImportFile,
+    setImportValidationOpen,
     setCrop,
     refreshEncounters,
     refreshDashboard,
@@ -1494,6 +1609,7 @@ function AppShell() {
     cancelMemberEdit: () => setMemberForm(EMPTY_MEMBER_FORM),
     onMemberPhotoFileChange,
     handleDeleteMember,
+    handleValidateImportMembers,
     handleImportMembers,
     handleImportCircles,
     handleApplyCrop,
@@ -1514,7 +1630,9 @@ function AppShell() {
     handleLogin,
     handleLogout,
     openHelp,
-    closeHelp
+    closeHelp,
+    clearImportValidation,
+    openImportValidationReport
   };
 
   const canViewDashboard = can(PERMISSIONS.DASHBOARD_VIEW);
@@ -1677,6 +1795,10 @@ function AppShell() {
         </div>
       )}
 
+      <ImportValidationModal
+        diagnostics={importValidationOpen ? importValidation : null}
+        onClose={() => setImportValidationOpen(false)}
+      />
       <HelpModal content={activeHelp} onClose={closeHelp} />
     </div>
   );
@@ -1768,6 +1890,124 @@ function HelpModal({ content, onClose }: { content: HelpContent | null; onClose:
   );
 }
 
+function ImportValidationModal({
+  diagnostics,
+  onClose
+}: {
+  diagnostics: MembersImportValidation | null;
+  onClose: () => void;
+}) {
+  if (!diagnostics) return null;
+
+  const errorsCount = diagnostics.differences.filter((item) => item.severity === "error").length;
+  const warningsCount = diagnostics.differences.filter((item) => item.severity === "warning").length;
+  const infoCount = diagnostics.differences.filter((item) => item.severity === "info").length;
+
+  return (
+    <div className="crop-backdrop help-backdrop" onClick={onClose}>
+      <div className="help-modal" onClick={(event) => event.stopPropagation()}>
+        <div className="panel-head help-head">
+          <div>
+            <h2>Validação de Importação</h2>
+            <p className="muted">
+              Equipe: <strong>{diagnostics.team.nome}</strong> | Perfil detectado:{" "}
+              <strong>{diagnostics.team.profileLabel}</strong>
+            </p>
+          </div>
+          <button type="button" className="ghost help-close" onClick={onClose}>
+            Fechar
+          </button>
+        </div>
+
+        <div className="help-body">
+          <section className="help-section">
+            <h3>Resumo</h3>
+            <div className="stats-grid">
+              <article className="stat-card">
+                <span>Linhas lidas</span>
+                <strong>{diagnostics.summary.linhasLidas}</strong>
+              </article>
+              <article className="stat-card">
+                <span>Registros previstos</span>
+                <strong>{diagnostics.summary.registrosPrevistos}</strong>
+              </article>
+              <article className="stat-card">
+                <span>Casais previstos</span>
+                <strong>{diagnostics.summary.casaisPrevistos}</strong>
+              </article>
+              <article className="stat-card">
+                <span>Individuais previstos</span>
+                <strong>{diagnostics.summary.individuaisPrevistos}</strong>
+              </article>
+            </div>
+            <div className="audit-meta">
+              <span className="chip danger">Erros: {errorsCount}</span>
+              <span className="chip">Alertas: {warningsCount}</span>
+              <span className="chip">Informações: {infoCount}</span>
+            </div>
+          </section>
+
+          <section className="help-section">
+            <h3>Regras aplicadas</h3>
+            <ul className="help-list">
+              {diagnostics.team.rules.map((rule, index) => (
+                <li key={`${rule}-${index}`}>{rule}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="help-section">
+            <h3>Diferenças detectadas</h3>
+            {diagnostics.differences.length === 0 ? (
+              <p className="muted">Nenhuma diferença relevante detectada.</p>
+            ) : (
+              <ul className="help-list">
+                {diagnostics.differences.map((item, index) => (
+                  <li key={`${item.code}-${index}`}>
+                    <strong>[{item.severity.toUpperCase()}]</strong> {item.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="help-section">
+            <h3>Cargos encontrados</h3>
+            <div className="help-html">
+              <table className="help-table">
+                <thead>
+                  <tr>
+                    <th>Cargo</th>
+                    <th>Modo</th>
+                    <th>Linhas</th>
+                    <th>Registros previstos</th>
+                    <th>Casais</th>
+                    <th>Individuais</th>
+                    <th>Sobras casal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {diagnostics.cargos.map((cargo) => (
+                    <tr key={cargo.cargo}>
+                      <td>{cargo.cargo}</td>
+                      <td>{cargo.mode}</td>
+                      <td>{cargo.memberRows}</td>
+                      <td>{cargo.registrosPrevistos}</td>
+                      <td>{cargo.casaisPrevistos}</td>
+                      <td>{cargo.individuaisPrevistos}</td>
+                      <td>{cargo.sobrasCasal}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccessDeniedScreen() {
   return (
     <div className="panel">
@@ -1833,7 +2073,8 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
     "SETTINGS_PDF_TITLE",
     "SETTINGS_PDF_TITLE_FONT",
     "EQUIPE_TITULO_ARTE",
-    "MEMBRO_FOTO"
+    "MEMBRO_FOTO",
+    "MEMBROS_VALIDACAO"
   ];
 
   const auditPageSize = Number(shell.auditFilters?.limit || 50);
@@ -2600,6 +2841,10 @@ function TeamDetailScreen({
     if (encounterId && teamId) actions.refreshMembers(encounterId, teamId);
   }, [encounterId, teamId]);
 
+  useEffect(() => {
+    actions.clearImportValidation();
+  }, [teamId]);
+
   const team = shell.teams.find((item: Team) => sameId(item.id, teamId)) || null;
   const groupedMembers = useMemo(() => groupMembersByCargo(shell.members), [shell.members]);
 
@@ -2674,12 +2919,36 @@ function TeamDetailScreen({
               type="file"
               accept=".xlsx,.xls,.csv"
               disabled={!canImportMembers}
-              onChange={(event) => actions.setImportFile(event.target.files?.[0] || null)}
+              onChange={(event) => {
+                actions.setImportFile(event.target.files?.[0] || null);
+                actions.clearImportValidation();
+              }}
             />
           </label>
-          <button disabled={!shell.importFile || !canImportMembers} onClick={() => actions.handleImportMembers(encounterId, teamId)}>
-            Importar dados
-          </button>
+          <div className="actions-row">
+            <button
+              className="ghost"
+              disabled={!shell.importFile || !canImportMembers || shell.importValidating}
+              onClick={() => actions.handleValidateImportMembers(encounterId, teamId)}
+            >
+              {shell.importValidating ? "Validando..." : "Validar arquivo"}
+            </button>
+            <button disabled={!shell.importFile || !canImportMembers} onClick={() => actions.handleImportMembers(encounterId, teamId)}>
+              Importar dados
+            </button>
+          </div>
+          {shell.importValidation && shell.importValidationTeamId === teamId && (
+            <div className="import-validation-inline">
+              <p className="muted">
+                Última validação: {shell.importValidation.summary.registrosPrevistos} registro(s) previsto(s),{" "}
+                {shell.importValidation.differences.filter((item: ImportValidationDifference) => item.severity === "error").length} erro(s),{" "}
+                {shell.importValidation.differences.filter((item: ImportValidationDifference) => item.severity === "warning").length} alerta(s).
+              </p>
+              <button className="ghost" onClick={() => actions.openImportValidationReport()}>
+                Ver relatório
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
