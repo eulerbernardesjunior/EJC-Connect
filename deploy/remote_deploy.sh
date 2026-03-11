@@ -52,7 +52,11 @@ if [ ! -f "$APP_DIR/.env" ]; then
   exit 1
 fi
 
-for CONTAINER_NAME in ejc-connect-db ejc-connect-backend ejc-connect-web; do
+# Limpa containers legados e atuais para evitar conflito de porta/nome
+# quando a composicao muda entre `service-1` e `container_name` fixo.
+for CONTAINER_NAME in \
+  ejc-connect-db ejc-connect-backend ejc-connect-web \
+  ejc-connect-db-1 ejc-connect-backend-1 ejc-connect-web-1; do
   if $DOCKER_CMD ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
     $DOCKER_CMD rm -f "$CONTAINER_NAME" >/dev/null
   fi
