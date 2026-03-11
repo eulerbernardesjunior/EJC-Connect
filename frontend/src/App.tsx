@@ -189,12 +189,41 @@ function parseError(error: unknown) {
 }
 
 function permissionUiLabel(permissionKey: string) {
-  return (
-    PERMISSION_UI_LABELS[permissionKey] || {
-      label: permissionKey,
-      description: "Permissao tecnica personalizada."
-    }
-  );
+  if (PERMISSION_UI_LABELS[permissionKey]) {
+    return PERMISSION_UI_LABELS[permissionKey];
+  }
+
+  const [scopeRaw, actionRaw] = permissionKey.split(".");
+  const scope = String(scopeRaw || "").toLowerCase();
+  const action = String(actionRaw || "").toLowerCase();
+
+  const scopeLabels: Record<string, string> = {
+    dashboard: "Dashboard",
+    cash: "Caixa",
+    sales: "Vendas",
+    stock: "Estoque",
+    reports: "Relatorios",
+    users: "Usuarios",
+    settings: "Configuracoes",
+    audit: "Auditoria"
+  };
+
+  const actionLabels: Record<string, string> = {
+    view: "visualizar",
+    manage: "gerenciar",
+    open: "abrir",
+    close: "fechar",
+    movement: "movimentar",
+    register: "registrar"
+  };
+
+  const scopeLabel = scopeLabels[scope] || scope || "Modulo";
+  const actionLabel = actionLabels[action] || action || "acessar";
+
+  return {
+    label: `${scopeLabel} - ${actionLabel}`,
+    description: "Permissao personalizada de acesso."
+  };
 }
 
 function formatMoney(value?: number | null) {
@@ -1727,7 +1756,6 @@ function App() {
                           <div className="permission-card-content">
                             <strong>{meta.label}</strong>
                             <span>{meta.description}</span>
-                            <code>{permissionKey}</code>
                           </div>
                         </label>
                       );
