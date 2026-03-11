@@ -1,3320 +1,1845 @@
-import { ChangeEvent, FormEvent, SyntheticEvent, useEffect, useMemo, useState } from "react";
-import {
-  BrowserRouter,
-  Link,
-  NavLink,
-  Navigate,
-  Route,
-  Routes,
-  useNavigate,
-  useParams
-} from "react-router-dom";
-import ReactCrop, { Crop, PercentCrop, PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
-import "react-image-crop/dist/ReactCrop.css";
-import { HelpContent, HelpTopic, getHelpContent } from "./helpContent";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type TeamType = "TRABALHO" | "CIRCULO";
-type ThemeMode = "light" | "dark";
+type RoleType = "ADMIN" | "EDITOR" | "VISUALIZADOR" | "OP_CAIXA";
+type PaymentMethod = "DINHEIRO" | "PIX" | "CARTAO_DEBITO" | "CARTAO_CREDITO" | "FIADO" | "OUTRO";
+type SectionKey = "dashboard" | "cash" | "sales" | "stock" | "reports" | "users" | "settings" | "audit";
 
-type Encounter = {
-  id: number;
-  nome: string | null;
-  tema: string | null;
-  data_inicio: string | null;
-  data_fim: string | null;
-  data_encontro: string | null;
-};
-
-type Team = {
-  id: number;
-  encontro_id: number;
-  nome: string;
-  tipo: TeamType;
-  cor_hex: string | null;
-  slogan: string | null;
-  ordem: number;
-  foto_url: string | null;
-  titulo_arte_url: string | null;
-};
-
-type PdfTitleMode = "SYSTEM_FONT" | "CUSTOM_FONT" | "TEAM_ART";
-
-type PdfTitleSettings = {
-  mode: PdfTitleMode;
-  font_url: string | null;
-};
-
-type Member = {
-  id: number;
-  encontro_id: number;
-  equipe_id: number;
-  cargo_nome: string | null;
-  nome_principal: string;
-  nome_secundario: string | null;
-  telefone_principal: string | null;
-  telefone_secundario: string | null;
-  paroquia: string | null;
-  foto_url: string | null;
-};
-
-type AppUser = {
+type User = {
   id: number;
   nome: string;
   email: string;
-  permissao: "ADMIN" | "EDITOR" | "VISUALIZADOR";
+  permissao: RoleType;
   ativo: boolean;
   last_login_at?: string | null;
   permissions: Record<string, boolean>;
   effectivePermissions: Record<string, boolean>;
 };
 
-type RoleType = AppUser["permissao"];
-
-type AuthResponse = {
-  token: string;
-  user: AppUser;
-  permissionsCatalog: string[];
+type PixPublicConfig = {
+  enabled: boolean;
+  has_key: boolean;
+  key_masked: string | null;
+  merchant_name: string;
+  merchant_city: string;
+  description: string;
 };
 
-type MeResponse = {
-  user: AppUser;
-  permissionsCatalog: string[];
+type PixSettings = {
+  enabled: boolean;
+  pix_key: string;
+  merchant_name: string;
+  merchant_city: string;
+  description: string;
+  txid_prefix: string;
 };
 
-type DashboardStats = {
-  encontros: number;
-  equipes: number;
-  circulos: number;
-  capasCartazes: number;
-  membros: number;
-};
-
-type MembersImportStats = {
-  total: number;
-  individuais: number;
-  casais: number;
-  erros: string[];
-  totalLinhasArquivo: number;
-};
-
-type MembersImportResponse = {
-  success: boolean;
-  message: string;
-  estatisticas: MembersImportStats;
-};
-
-type ImportValidationSeverity = "error" | "warning" | "info";
-
-type ImportValidationDifference = {
-  severity: ImportValidationSeverity;
-  code: string;
-  message: string;
-  details?: Record<string, unknown>;
-};
-
-type ImportValidationCargo = {
-  cargo: string;
-  mode: "CASAL" | "INDIVIDUAL";
-  memberRows: number;
-  registrosPrevistos: number;
-  casaisPrevistos: number;
-  individuaisPrevistos: number;
-  sobrasCasal: number;
-};
-
-type MembersImportValidation = {
-  team: {
-    id: number;
-    nome: string;
-    tipo: TeamType;
-    profileCode: string;
-    profileLabel: string;
-    rules: string[];
-  };
-  summary: {
-    linhasLidas: number;
-    cabecalhosDetectados: number;
-    labelsIgnorados: number;
-    linhasComMembros: number;
-    linhasSemCargo: number;
-    cargosDetectados: number;
-    registrosPrevistos: number;
-    casaisPrevistos: number;
-    individuaisPrevistos: number;
-  };
-  cargos: ImportValidationCargo[];
-  differences: ImportValidationDifference[];
-  errors: string[];
-  warnings: string[];
-};
-
-type MembersImportValidationResponse = {
-  success: boolean;
-  message: string;
-  diagnostico: MembersImportValidation;
-};
-
-type CirclesImportStats = {
-  circulosCriados: number;
-  membrosCriados: number;
-  linhasLidas: number;
-  erros: string[];
-};
-
-type CirclesImportResponse = {
-  success: boolean;
-  message: string;
-  estatisticas: CirclesImportStats;
-};
-
-type Asset = {
-  id: number;
-  encontro_id: number;
-  tipo: string;
-  titulo: string | null;
-  image_url: string;
-  ordem: number;
-};
-
-type AuditLogEntry = {
-  id: number;
-  user_id: number | null;
-  user_nome: string | null;
-  user_email: string | null;
-  encontro_id: number | null;
-  encontro_nome: string | null;
-  action: string;
-  resource_type: string;
-  resource_id: string | null;
-  summary: string;
-  details: Record<string, unknown>;
-  ip_address: string | null;
-  user_agent: string | null;
-  created_at: string;
-};
-
-type AuditListResponse = {
-  items: AuditLogEntry[];
-  total: number;
-  limit: number;
-  offset: number;
-};
-
-type AuditFilters = {
-  encounterId: number | null;
-  userId: number | null;
-  action: string;
-  resourceType: string;
-  limit: number;
-};
-
-type CropPreset = {
-  aspect: number;
-  outputWidth: number;
-  outputHeight: number;
-  label: string;
-  lockAspect: boolean;
-  fit: "cover" | "contain" | "stretch";
-};
-
-type CropTarget =
-  | {
-      kind: "TEAM";
-      encounterId: number;
-      teamId: number;
-      teamType: TeamType;
-      displayName: string;
-    }
-  | {
-      kind: "MEMBER";
-      encounterId: number;
-      teamId: number;
-      memberId: number;
-      displayName: string;
-    }
-  | {
-      kind: "ASSET";
-      encounterId: number;
-      tipo: string;
-      titulo: string;
-      ordem: number;
-      displayName: string;
-    };
-
-type CropState = {
-  source: string;
-  cropBox: PercentCrop;
-  pixelCrop: PixelCrop;
-  renderWidth: number;
-  renderHeight: number;
-  preset: CropPreset;
-  target: CropTarget;
-};
-
-type TeamFormState = {
-  id: number;
-  nome: string;
-  ordem: number;
-  corHex: string;
-  slogan: string;
-};
-
-type MemberFormState = {
-  id: number;
-  cargoNome: string;
-  nomePrincipal: string;
-  nomeSecundario: string;
-  telefonePrincipal: string;
-  telefoneSecundario: string;
-  paroquia: string;
-};
-
-type AssetFormState = {
-  tipo: string;
-  titulo: string;
-  ordem: number;
-  file: File | null;
+type PixPreview = {
+  amount: number;
+  txid: string;
+  brcode: string;
+  qr_code_data_url: string;
+  merchant_name: string;
+  merchant_city: string;
+  description: string | null;
+  key_masked: string | null;
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
-const TOKEN_KEY = "ejc_token_v2";
+const TOKEN_KEY = "caixa_token_v1";
 
 const PERMISSIONS = {
   DASHBOARD_VIEW: "dashboard.view",
-  ENCOUNTERS_VIEW: "encounters.view",
-  ENCOUNTERS_MANAGE: "encounters.manage",
-  TEAMS_VIEW: "teams.view",
-  TEAMS_MANAGE: "teams.manage",
-  MEMBERS_VIEW: "members.view",
-  MEMBERS_MANAGE: "members.manage",
-  IMPORTS_RUN: "imports.run",
-  CIRCLES_IMPORT: "circles.import",
-  PDF_GENERATE: "pdf.generate",
-  ASSETS_VIEW: "assets.view",
-  ASSETS_MANAGE: "assets.manage",
+  CASH_OPEN: "cash.open",
+  CASH_CLOSE: "cash.close",
+  CASH_MOVEMENT: "cash.movement",
+  SALES_REGISTER: "sales.register",
+  SALES_VIEW: "sales.view",
+  STOCK_VIEW: "stock.view",
+  STOCK_MANAGE: "stock.manage",
+  REPORTS_VIEW: "reports.view",
   USERS_VIEW: "users.view",
   USERS_MANAGE: "users.manage"
 } as const;
 
-const ROLE_DEFAULT_PERMISSIONS: Record<RoleType, Record<string, boolean>> = {
-  ADMIN: Object.values(PERMISSIONS).reduce((acc, key) => ({ ...acc, [key]: true }), {}),
-  EDITOR: {
-    [PERMISSIONS.DASHBOARD_VIEW]: true,
-    [PERMISSIONS.ENCOUNTERS_VIEW]: true,
-    [PERMISSIONS.ENCOUNTERS_MANAGE]: true,
-    [PERMISSIONS.TEAMS_VIEW]: true,
-    [PERMISSIONS.TEAMS_MANAGE]: true,
-    [PERMISSIONS.MEMBERS_VIEW]: true,
-    [PERMISSIONS.MEMBERS_MANAGE]: true,
-    [PERMISSIONS.IMPORTS_RUN]: true,
-    [PERMISSIONS.CIRCLES_IMPORT]: true,
-    [PERMISSIONS.PDF_GENERATE]: true,
-    [PERMISSIONS.ASSETS_VIEW]: true,
-    [PERMISSIONS.ASSETS_MANAGE]: true,
-    [PERMISSIONS.USERS_VIEW]: false,
-    [PERMISSIONS.USERS_MANAGE]: false
-  },
-  VISUALIZADOR: {
-    [PERMISSIONS.DASHBOARD_VIEW]: true,
-    [PERMISSIONS.ENCOUNTERS_VIEW]: true,
-    [PERMISSIONS.ENCOUNTERS_MANAGE]: false,
-    [PERMISSIONS.TEAMS_VIEW]: true,
-    [PERMISSIONS.TEAMS_MANAGE]: false,
-    [PERMISSIONS.MEMBERS_VIEW]: true,
-    [PERMISSIONS.MEMBERS_MANAGE]: false,
-    [PERMISSIONS.IMPORTS_RUN]: false,
-    [PERMISSIONS.CIRCLES_IMPORT]: false,
-    [PERMISSIONS.PDF_GENERATE]: true,
-    [PERMISSIONS.ASSETS_VIEW]: true,
-    [PERMISSIONS.ASSETS_MANAGE]: false,
-    [PERMISSIONS.USERS_VIEW]: false,
-    [PERMISSIONS.USERS_MANAGE]: false
-  }
-};
-
-const ASSET_TYPES = [
-  { value: "CAPA", label: "Capa" },
-  { value: "SEPARADOR_CIRCULOS", label: "Separador de Círculos" },
-  { value: "CARTAZ_CIRCULO", label: "Cartaz do Círculo" },
-  { value: "SEPARADOR_EQUIPES", label: "Separador de Equipes" },
-  { value: "MUSICA_TEMA", label: "Letra da Música Tema" },
-  { value: "CONVITE_POS_ENCONTRO", label: "Convite Pós Encontro" },
-  { value: "CONTRACAPA", label: "Contra Capa" },
-  // Compatibilidade com cadastros antigos
-  { value: "SEPARADOR_ENCONTREIROS", label: "Separador Encontreiros" },
-  { value: "SEPARADOR_ENCONTRISTAS", label: "Separador Encontristas" },
-  { value: "CARTAZ", label: "Cartaz" }
+const PAYMENT_METHODS: PaymentMethod[] = [
+  "DINHEIRO",
+  "PIX",
+  "CARTAO_DEBITO",
+  "CARTAO_CREDITO",
+  "FIADO",
+  "OUTRO"
 ];
 
-const CROP_PRESETS = {
-  TEAM: {
-    aspect: 3 / 2,
-    outputWidth: 1500,
-    outputHeight: 1000,
-    label: "15x10 (equipes e círculos)",
-    lockAspect: true,
-    fit: "cover"
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  DINHEIRO: "Dinheiro",
+  PIX: "PIX",
+  CARTAO_DEBITO: "Cartao Debito",
+  CARTAO_CREDITO: "Cartao Credito",
+  FIADO: "Fiado",
+  OUTRO: "Outro"
+};
+
+const ROLE_LABELS: Record<RoleType, string> = {
+  ADMIN: "Administrador",
+  EDITOR: "Editor",
+  VISUALIZADOR: "Visualizador",
+  OP_CAIXA: "Op. de Caixa"
+};
+
+const PERMISSION_UI_LABELS: Record<string, { label: string; description: string }> = {
+  [PERMISSIONS.DASHBOARD_VIEW]: {
+    label: "Dashboard",
+    description: "Permite ver indicadores e resumos gerais."
   },
-  MEMBER: {
-    aspect: 1,
-    outputWidth: 900,
-    outputHeight: 900,
-    label: "1:1 (pessoas e casais)",
-    lockAspect: true,
-    fit: "cover"
+  [PERMISSIONS.CASH_OPEN]: {
+    label: "Abrir caixa",
+    description: "Permite iniciar um novo caixa."
   },
-  A4: {
-    aspect: 210 / 297,
-    outputWidth: 1240,
-    outputHeight: 1754,
-    label: "A4 retrato (capas, cartazes e separadores)",
-    lockAspect: false,
-    fit: "stretch"
+  [PERMISSIONS.CASH_CLOSE]: {
+    label: "Fechar caixa",
+    description: "Permite encerrar o caixa e gerar reducao Z."
+  },
+  [PERMISSIONS.CASH_MOVEMENT]: {
+    label: "Movimentar caixa",
+    description: "Permite registrar sangria e suprimento."
+  },
+  [PERMISSIONS.SALES_REGISTER]: {
+    label: "Registrar vendas",
+    description: "Permite criar vendas, gerar PIX e cancelar vendas."
+  },
+  [PERMISSIONS.SALES_VIEW]: {
+    label: "Ver vendas",
+    description: "Permite consultar lista e detalhes de vendas."
+  },
+  [PERMISSIONS.STOCK_VIEW]: {
+    label: "Ver estoque",
+    description: "Permite consultar produtos e saldos."
+  },
+  [PERMISSIONS.STOCK_MANAGE]: {
+    label: "Gerenciar estoque",
+    description: "Permite cadastrar produto e ajustar reposicoes/saldos."
+  },
+  [PERMISSIONS.REPORTS_VIEW]: {
+    label: "Ver relatorios",
+    description: "Permite acessar relatorios por periodo, usuario e item."
+  },
+  [PERMISSIONS.USERS_VIEW]: {
+    label: "Ver usuarios",
+    description: "Permite visualizar cadastros de usuarios."
+  },
+  [PERMISSIONS.USERS_MANAGE]: {
+    label: "Gerenciar usuarios",
+    description: "Permite criar, editar e excluir usuarios."
   }
-} as const;
-
-const EMPTY_TEAM_FORM: TeamFormState = {
-  id: 0,
-  nome: "",
-  ordem: 0,
-  corHex: "#8fbc8f",
-  slogan: ""
 };
 
-const EMPTY_MEMBER_FORM: MemberFormState = {
-  id: 0,
-  cargoNome: "",
-  nomePrincipal: "",
-  nomeSecundario: "",
-  telefonePrincipal: "",
-  telefoneSecundario: "",
-  paroquia: ""
+const DEFAULT_PIX_SETTINGS: PixSettings = {
+  enabled: false,
+  pix_key: "",
+  merchant_name: "CAIXA EJC",
+  merchant_city: "SAO PAULO",
+  description: "Pagamento Caixa EJC",
+  txid_prefix: "EJC"
 };
 
-const EMPTY_ASSET_FORM: AssetFormState = {
-  tipo: "CAPA",
-  titulo: "",
-  ordem: 0,
-  file: null
-};
-
-const EMPTY_PDF_TITLE_SETTINGS: PdfTitleSettings = {
-  mode: "SYSTEM_FONT",
-  font_url: null
-};
-
-const DEFAULT_AUDIT_FILTERS: AuditFilters = {
-  encounterId: null,
-  userId: null,
-  action: "",
-  resourceType: "",
-  limit: 50
+const EMPTY_PIX_CONFIG: PixPublicConfig = {
+  enabled: false,
+  has_key: false,
+  key_masked: null,
+  merchant_name: "CAIXA EJC",
+  merchant_city: "SAO PAULO",
+  description: "Pagamento Caixa EJC"
 };
 
 function apiUrl(path: string) {
   return `${API_BASE}${path}`;
 }
 
-function mediaUrl(path?: string | null) {
-  if (!path) return "";
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  return `${API_BASE}${path}`;
-}
-
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), init);
   if (!response.ok) {
-    let errorMessage = `Erro ${response.status}`;
+    let message = `Erro ${response.status}`;
     try {
       const payload = (await response.json()) as { error?: string; message?: string };
-      errorMessage = payload.error || payload.message || errorMessage;
+      message = payload.error || payload.message || message;
     } catch {
-      errorMessage = `${errorMessage}.`;
+      message = `${message}.`;
     }
-    const error = new Error(errorMessage) as Error & { status?: number };
-    error.status = response.status;
-    throw error;
+    throw new Error(message);
   }
+
   if (response.status === 204) {
     return undefined as T;
   }
+
   return (await response.json()) as T;
 }
 
-async function requestBlob(path: string, token: string): Promise<Blob> {
-  const response = await fetch(apiUrl(path), {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!response.ok) {
-    let errorMessage = `Erro ${response.status}`;
-    try {
-      const payload = (await response.json()) as { error?: string; message?: string };
-      errorMessage = payload.error || payload.message || errorMessage;
-    } catch {
-      errorMessage = `${errorMessage}.`;
-    }
-    const error = new Error(errorMessage) as Error & { status?: number };
-    error.status = response.status;
-    throw error;
-  }
-  return response.blob();
-}
-
-function withAuth(init: RequestInit = {}, token?: string): RequestInit {
+function withAuth(token: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers || {});
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  headers.set("Authorization", `Bearer ${token}`);
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
-  return { ...init, headers };
-}
-
-function defaultPermissionsForRole(role: RoleType) {
-  return { ...ROLE_DEFAULT_PERMISSIONS[role] };
-}
-
-function formatDate(dateRaw?: string | null) {
-  if (!dateRaw) return "-";
-  const raw = String(dateRaw).trim();
-  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-
-  if (match) {
-    const onlyDate = new Date(`${match[1]}T00:00:00`);
-    if (!Number.isNaN(onlyDate.getTime())) {
-      return onlyDate.toLocaleDateString("pt-BR");
-    }
-  }
-
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleDateString("pt-BR");
-}
-
-function formatDateTime(dateRaw?: string | null) {
-  if (!dateRaw) return "-";
-  const parsed = new Date(String(dateRaw));
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleString("pt-BR");
-}
-
-function displayEncounterName(encounter: Encounter) {
-  return encounter.nome || encounter.tema || `Encontro #${encounter.id}`;
+  return { ...init, headers } as RequestInit;
 }
 
 function parseError(error: unknown) {
   return error instanceof Error ? error.message : "Erro inesperado.";
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
-    reader.readAsDataURL(file);
-  });
-}
-
-function loadImage(source: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Falha ao carregar imagem para crop."));
-    img.src = source;
-  });
-}
-
-function centeredAspectCrop(mediaWidth: number, mediaHeight: number, aspect: number): PercentCrop {
-  return centerCrop(
-    makeAspectCrop(
-      {
-        unit: "%",
-        width: 100
-      },
-      aspect,
-      mediaWidth,
-      mediaHeight
-    ),
-    mediaWidth,
-    mediaHeight
-  ) as PercentCrop;
-}
-
-function normalizePixelCrop(pixelCrop: PixelCrop, image: HTMLImageElement): PixelCrop {
-  const x = Math.max(0, Math.min(pixelCrop.x, image.naturalWidth - 1));
-  const y = Math.max(0, Math.min(pixelCrop.y, image.naturalHeight - 1));
-  const maxWidth = Math.max(1, image.naturalWidth - x);
-  const maxHeight = Math.max(1, image.naturalHeight - y);
-  const width = Math.max(1, Math.min(pixelCrop.width, maxWidth));
-  const height = Math.max(1, Math.min(pixelCrop.height, maxHeight));
-  return { x, y, width, height, unit: "px" };
-}
-
-function cropToPixel(crop: Crop, mediaWidth: number, mediaHeight: number): PixelCrop {
-  const x = crop.x || 0;
-  const y = crop.y || 0;
-  const width = crop.width || 0;
-  const height = crop.height || 0;
-
-  if (crop.unit === "%") {
-    return {
-      unit: "px",
-      x: Math.round((x / 100) * mediaWidth),
-      y: Math.round((y / 100) * mediaHeight),
-      width: Math.round((width / 100) * mediaWidth),
-      height: Math.round((height / 100) * mediaHeight)
-    };
-  }
-
-  return {
-    unit: "px",
-    x: Math.round(x),
-    y: Math.round(y),
-    width: Math.round(width),
-    height: Math.round(height)
-  };
-}
-
-async function renderCropBlob(source: string, pixelCrop: PixelCrop, preset: CropPreset) {
-  const image = await loadImage(source);
-  const safeCrop = normalizePixelCrop(pixelCrop, image);
-  const outputWidth = preset.outputWidth;
-  const outputHeight = preset.outputHeight;
-  const canvas = document.createElement("canvas");
-  canvas.width = outputWidth;
-  canvas.height = outputHeight;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Canvas indisponível no navegador.");
-  }
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, outputWidth, outputHeight);
-  const sourceWidth = safeCrop.width;
-  const sourceHeight = safeCrop.height;
-  let drawX = 0;
-  let drawY = 0;
-  let drawWidth = outputWidth;
-  let drawHeight = outputHeight;
-
-  if (preset.fit !== "stretch") {
-    const fitScale =
-      preset.fit === "contain"
-        ? Math.min(outputWidth / sourceWidth, outputHeight / sourceHeight)
-        : Math.max(outputWidth / sourceWidth, outputHeight / sourceHeight);
-    drawWidth = Math.max(1, Math.round(sourceWidth * fitScale));
-    drawHeight = Math.max(1, Math.round(sourceHeight * fitScale));
-    drawX = Math.round((outputWidth - drawWidth) / 2);
-    drawY = Math.round((outputHeight - drawHeight) / 2);
-  }
-
-  ctx.drawImage(image, safeCrop.x, safeCrop.y, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
-
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", 0.92);
-  });
-  if (!blob) {
-    throw new Error("Falha ao gerar imagem recortada.");
-  }
-  return blob;
-}
-
-function groupMembersByCargo(members: Member[]) {
-  const map = new Map<string, Member[]>();
-  for (const member of members) {
-    const key = (member.cargo_nome || "Sem Cargo").trim() || "Sem Cargo";
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)?.push(member);
-  }
-
-  const cargoRank = (cargoNome: string) => {
-    const cargo = String(cargoNome || "")
-      .toUpperCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "");
-    if (!cargo) return 9;
-    if (cargo.includes("DIRETOR ESPIRITUAL")) return 0;
-    if (/\bJOVENS?\b/.test(cargo) && cargo.includes("COORD")) return 1;
-    if (/\bTIOS?\b/.test(cargo) && cargo.includes("COORD")) return 2;
-    if (/\bTIOS?\b/.test(cargo) && cargo.includes("APOIO")) return 3;
-    return 9;
-  };
-
-  return [...map.entries()]
-    .sort((a, b) => {
-      const rankDiff = cargoRank(a[0]) - cargoRank(b[0]);
-      if (rankDiff !== 0) return rankDiff;
-      return a[0].localeCompare(b[0], "pt-BR");
-    })
-    .map(([cargo, list]) => ({
-      cargo,
-      membros: list.sort((a, b) => a.nome_principal.localeCompare(b.nome_principal, "pt-BR"))
-    }));
-}
-
-function parseNumericParam(raw?: string) {
-  if (!raw) return null;
-  const value = Number(raw);
-  return Number.isNaN(value) ? null : value;
-}
-
-function sameId(value: unknown, id: number | null) {
-  if (id === null || value === null || value === undefined) return false;
-  const parsed = Number(value);
-  return !Number.isNaN(parsed) && parsed === id;
-}
-
-function App() {
+function permissionUiLabel(permissionKey: string) {
   return (
-    <BrowserRouter>
-      <AppShell />
-    </BrowserRouter>
+    PERMISSION_UI_LABELS[permissionKey] || {
+      label: permissionKey,
+      description: "Permissao tecnica personalizada."
+    }
   );
 }
 
-function AppShell() {
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem("ejc_theme");
-    return saved === "dark" ? "dark" : "light";
-  });
+function formatMoney(value?: number | null) {
+  const amount = Number(value || 0);
+  return amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("pt-BR");
+}
+
+function formatDateInput(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || "");
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const [permissionsCatalog, setPermissionsCatalog] = useState<string[]>(Object.values(PERMISSIONS));
   const [authLoading, setAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [permissionsCatalog, setPermissionsCatalog] = useState<string[]>(Object.values(PERMISSIONS));
+  const [activeSection, setActiveSection] = useState<SectionKey>("sales");
+
   const [loginForm, setLoginForm] = useState({ email: "", senha: "" });
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const [encounters, setEncounters] = useState<Encounter[]>([]);
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [auditTotal, setAuditTotal] = useState(0);
-  const [auditOffset, setAuditOffset] = useState(0);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditFilters, setAuditFilters] = useState<AuditFilters>({ ...DEFAULT_AUDIT_FILTERS });
-  const [dashboard, setDashboard] = useState<DashboardStats>({
-    encontros: 0,
-    equipes: 0,
-    circulos: 0,
-    capasCartazes: 0,
-    membros: 0
+  const [products, setProducts] = useState<any[]>([]);
+  const [sales, setSales] = useState<any[]>([]);
+  const [selectedSale, setSelectedSale] = useState<any | null>(null);
+  const [cashCurrent, setCashCurrent] = useState<any>({ session: null });
+  const [cashSessions, setCashSessions] = useState<any[]>([]);
+  const [cashReport, setCashReport] = useState<any | null>(null);
+  const [overview, setOverview] = useState<any | null>(null);
+  const [reportGeneral, setReportGeneral] = useState<any | null>(null);
+  const [reportPeriod, setReportPeriod] = useState<any | null>(null);
+  const [reportByUser, setReportByUser] = useState<any[]>([]);
+  const [reportByItem, setReportByItem] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  const [dashboardRange, setDashboardRange] = useState(() => {
+    const today = formatDateInput();
+    return { startDate: today, endDate: today };
+  });
+  const [reportRange, setReportRange] = useState(() => {
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { startDate: formatDateInput(monthStart), endDate: formatDateInput(today) };
   });
 
-  const [encounterForm, setEncounterForm] = useState({
-    nome: "",
-    dataInicio: "",
-    dataFim: ""
+  const [openForm, setOpenForm] = useState({ openingAmount: "0", observations: "" });
+  const [movementForm, setMovementForm] = useState({ type: "SUPRIMENTO", amount: "", note: "" });
+  const [closeForm, setCloseForm] = useState({ closingAmount: "", observations: "" });
+
+  const [saleForm, setSaleForm] = useState({
+    payment_method: "DINHEIRO",
+    discount_amount: "0",
+    received_amount: ""
   });
+  const [saleItems, setSaleItems] = useState<Array<{ product_id: number; quantity: string }>>([]);
+  const [salesStatusFilter, setSalesStatusFilter] = useState("ALL");
+  const [cancelReason, setCancelReason] = useState("");
+  const [saleSearch, setSaleSearch] = useState("");
+  const [pixConfig, setPixConfig] = useState<PixPublicConfig>(EMPTY_PIX_CONFIG);
+  const [pixSettings, setPixSettings] = useState<PixSettings>(DEFAULT_PIX_SETTINGS);
+  const [pixPreview, setPixPreview] = useState<PixPreview | null>(null);
+  const [pixLoading, setPixLoading] = useState(false);
+
+  const [productForm, setProductForm] = useState({
+    id: 0,
+    nome: "",
+    sku: "",
+    categoria: "",
+    preco_venda: "0",
+    custo_unitario: "0",
+    estoque_inicial: "0",
+    ativo: true
+  });
+  const [stockAdjust, setStockAdjust] = useState({ productId: 0, quantity_delta: "", note: "" });
+  const [stockRestock, setStockRestock] = useState({ productId: 0, quantity: "", note: "" });
+  const [productMovements, setProductMovements] = useState<any[]>([]);
+
   const [userForm, setUserForm] = useState({
     id: 0,
     nome: "",
     email: "",
     senha: "",
-    permissao: "EDITOR" as RoleType,
+    permissao: "EDITOR",
     ativo: true,
-    permissions: defaultPermissionsForRole("EDITOR")
+    permissions: {} as Record<string, boolean>
   });
-  const [teamForm, setTeamForm] = useState<TeamFormState>(EMPTY_TEAM_FORM);
-  const [memberForm, setMemberForm] = useState<MemberFormState>(EMPTY_MEMBER_FORM);
-  const [assetForm, setAssetForm] = useState<AssetFormState>({ ...EMPTY_ASSET_FORM });
-  const [pdfTitleSettings, setPdfTitleSettings] = useState<PdfTitleSettings>({ ...EMPTY_PDF_TITLE_SETTINGS });
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [circleImportFile, setCircleImportFile] = useState<File | null>(null);
-  const [importValidation, setImportValidation] = useState<MembersImportValidation | null>(null);
-  const [importValidationTeamId, setImportValidationTeamId] = useState<number | null>(null);
-  const [importValidationOpen, setImportValidationOpen] = useState(false);
-  const [importValidating, setImportValidating] = useState(false);
+  const [availableRoles, setAvailableRoles] = useState<RoleType[]>([
+    "ADMIN",
+    "EDITOR",
+    "VISUALIZADOR",
+    "OP_CAIXA"
+  ]);
 
-  const [crop, setCrop] = useState<CropState | null>(null);
-  const [cropUploading, setCropUploading] = useState(false);
-  const [activeHelp, setActiveHelp] = useState<HelpContent | null>(null);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("ejc_theme", theme);
-  }, [theme]);
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function bootstrapAuth() {
-      if (!token) {
-        if (!ignore) {
-          setCurrentUser(null);
-          setAuthLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const response = await requestJson<MeResponse>("/api/auth/me", withAuth({}, token));
-        if (ignore) return;
-        setCurrentUser(response.user);
-        setPermissionsCatalog(response.permissionsCatalog || Object.values(PERMISSIONS));
-      } catch {
-        if (!ignore) {
-          sessionStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem("ejc_token");
-          setToken("");
-          setCurrentUser(null);
-        }
-      } finally {
-        if (!ignore) setAuthLoading(false);
-      }
-    }
-
-    bootstrapAuth();
-    return () => {
-      ignore = true;
-    };
-  }, [token]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    refreshEncounters();
-    refreshDashboard();
-    refreshPdfTitleSettings();
-    if (can(PERMISSIONS.USERS_VIEW)) {
-      refreshAuditLogs({ ...DEFAULT_AUDIT_FILTERS }, 0);
-    }
-  }, [currentUser]);
-
-
-
-  function success(msg: string) {
-    setMessage(msg);
-    setError("");
+  function can(permission: string) {
+    return Boolean(currentUser?.effectivePermissions?.[permission]);
   }
 
-  function resetUserForm(role: RoleType = "EDITOR") {
-    setUserForm({
-      id: 0,
-      nome: "",
-      email: "",
-      senha: "",
-      permissao: role,
-      ativo: true,
-      permissions: defaultPermissionsForRole(role)
+  function canAny(permissions: string[]) {
+    return permissions.some((item) => can(item));
+  }
+
+  function setUserPermission(permissionKey: string, enabled: boolean) {
+    setUserForm((prev) => {
+      const nextPermissions = { ...(prev.permissions || {}) };
+      if (enabled) {
+        nextPermissions[permissionKey] = true;
+      } else {
+        delete nextPermissions[permissionKey];
+      }
+      return { ...prev, permissions: nextPermissions };
     });
   }
 
-  function clearSession() {
-    sessionStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem("ejc_token");
-    setToken("");
-    setCurrentUser(null);
-    setPdfTitleSettings({ ...EMPTY_PDF_TITLE_SETTINGS });
-    setAuditLogs([]);
-    setAuditTotal(0);
-    setAuditOffset(0);
-    setAuditFilters({ ...DEFAULT_AUDIT_FILTERS });
-    setImportValidation(null);
-    setImportValidationTeamId(null);
-    setImportValidationOpen(false);
-    setImportValidating(false);
-    setMessage("");
-    setError("");
-  }
+  const visibleSections = useMemo(() => {
+    const all = [
+      { key: "sales", label: "PDV", visible: canAny([PERMISSIONS.SALES_REGISTER, PERMISSIONS.SALES_VIEW]) },
+      { key: "dashboard", label: "Dashboard", visible: can(PERMISSIONS.DASHBOARD_VIEW) },
+      {
+        key: "cash",
+        label: "Caixa",
+        visible: canAny([PERMISSIONS.CASH_OPEN, PERMISSIONS.CASH_CLOSE, PERMISSIONS.CASH_MOVEMENT, PERMISSIONS.REPORTS_VIEW])
+      },
+      { key: "stock", label: "Estoque", visible: can(PERMISSIONS.STOCK_VIEW) },
+      { key: "reports", label: "Relatorios", visible: can(PERMISSIONS.REPORTS_VIEW) },
+      { key: "users", label: "Usuarios", visible: can(PERMISSIONS.USERS_VIEW) },
+      { key: "settings", label: "Configuracoes", visible: can(PERMISSIONS.USERS_VIEW) },
+      { key: "audit", label: "Auditoria", visible: can(PERMISSIONS.USERS_VIEW) }
+    ] as Array<{ key: SectionKey; label: string; visible: boolean }>;
 
-  function can(permission: string) {
-    if (!currentUser) return false;
-    return Boolean(currentUser.effectivePermissions?.[permission]);
-  }
+    return all.filter((item) => item.visible);
+  }, [currentUser]);
+
+  const saleSummary = useMemo(() => {
+    const lines = saleItems
+      .map((item) => {
+        const product = products.find((p) => p.id === item.product_id);
+        const qty = Number(item.quantity || 0);
+        if (!product || qty <= 0) return null;
+        const lineTotal = Number((qty * Number(product.preco_venda || 0)).toFixed(2));
+        return { product, qty, lineTotal };
+      })
+      .filter(Boolean) as Array<{ product: any; qty: number; lineTotal: number }>;
+
+    const subtotal = Number(lines.reduce((sum, line) => sum + line.lineTotal, 0).toFixed(2));
+    const discount = Number(saleForm.discount_amount || 0);
+    const total = Number(Math.max(0, subtotal - discount).toFixed(2));
+    return { lines, subtotal, discount, total };
+  }, [saleItems, products, saleForm.discount_amount]);
+
+  const filteredSaleProducts = useMemo(() => {
+    const term = saleSearch.trim().toLowerCase();
+    const actives = products.filter((item) => item.ativo);
+    if (!term) return actives;
+    return actives.filter((item) => {
+      const nome = String(item.nome || "").toLowerCase();
+      const sku = String(item.sku || "").toLowerCase();
+      const categoria = String(item.categoria || "").toLowerCase();
+      return nome.includes(term) || sku.includes(term) || categoria.includes(term);
+    });
+  }, [products, saleSearch]);
+
+  const receivedAmount = Number(saleForm.received_amount || 0);
+  const changeAmount =
+    saleForm.payment_method === "DINHEIRO"
+      ? Number(Math.max(0, receivedAmount - saleSummary.total).toFixed(2))
+      : 0;
+  const missingAmount =
+    saleForm.payment_method === "DINHEIRO"
+      ? Number(Math.max(0, saleSummary.total - receivedAmount).toFixed(2))
+      : 0;
 
   async function authRequest<T>(path: string, init?: RequestInit) {
-    try {
-      return await requestJson<T>(path, withAuth(init, token));
-    } catch (err) {
-      const status = (err as Error & { status?: number }).status;
-      if (status === 401) {
-        clearSession();
-      }
-      throw err;
-    }
+    return requestJson<T>(path, withAuth(token, init));
   }
+  useEffect(() => {
+    if (!token) {
+      setAuthLoading(false);
+      setCurrentUser(null);
+      return;
+    }
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    requestJson<{ user: User; permissionsCatalog: string[] }>("/api/auth/me", withAuth(token))
+      .then((response) => {
+        setCurrentUser(response.user);
+        setPermissionsCatalog(response.permissionsCatalog || Object.values(PERMISSIONS));
+      })
+      .catch((err) => {
+        sessionStorage.removeItem(TOKEN_KEY);
+        setToken("");
+        setCurrentUser(null);
+        setError(parseError(err));
+      })
+      .finally(() => setAuthLoading(false));
+  }, [token]);
+
+  useEffect(() => {
+    if (!visibleSections.some((item) => item.key === activeSection) && visibleSections.length > 0) {
+      setActiveSection(visibleSections[0].key);
+    }
+  }, [visibleSections, activeSection]);
+
+  async function handleLogin(event: FormEvent) {
     event.preventDefault();
+    setError("");
+    setNotice("");
+
     try {
-      const response = await requestJson<AuthResponse>("/api/auth/login", {
+      const response = await requestJson<{ token: string; user: User; permissionsCatalog: string[] }>("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(loginForm)
       });
+
       sessionStorage.setItem(TOKEN_KEY, response.token);
       setToken(response.token);
       setCurrentUser(response.user);
       setPermissionsCatalog(response.permissionsCatalog || Object.values(PERMISSIONS));
       setLoginForm({ email: "", senha: "" });
-      setMessage("");
-      setError("");
+      setNotice("Login realizado com sucesso.");
     } catch (err) {
       setError(parseError(err));
     }
   }
 
   function handleLogout() {
-    clearSession();
+    sessionStorage.removeItem(TOKEN_KEY);
+    setToken("");
+    setCurrentUser(null);
+    setNotice("Sessao encerrada.");
+    setError("");
   }
 
-  function openHelp(topic: HelpTopic) {
-    setActiveHelp(getHelpContent(topic));
+  async function loadProducts(activeOnly = false) {
+    const query = activeOnly ? "?active=true" : "";
+    const data = await authRequest<any[]>(`/api/products${query}`);
+    setProducts(data);
   }
 
-  function closeHelp() {
-    setActiveHelp(null);
+  async function loadSales() {
+    const params = new URLSearchParams();
+    params.set("limit", "120");
+    if (salesStatusFilter !== "ALL") params.set("status", salesStatusFilter);
+    const data = await authRequest<any[]>(`/api/sales?${params.toString()}`);
+    setSales(data);
   }
 
-  function clearImportValidation() {
-    setImportValidation(null);
-    setImportValidationTeamId(null);
-    setImportValidationOpen(false);
+  async function loadCurrentCash() {
+    const data = await authRequest<any>("/api/cash/sessions/current");
+    setCashCurrent(data);
   }
 
-  function openImportValidationReport() {
-    if (!importValidation) return;
-    setImportValidationOpen(true);
+  async function loadCashSessions() {
+    const data = await authRequest<any[]>("/api/cash/sessions?limit=30");
+    setCashSessions(data);
   }
 
-  async function refreshEncounters() {
-    try {
-      const data = await authRequest<Encounter[]>("/api/encounters");
-      setEncounters(data);
-    } catch (err) {
-      setError(parseError(err));
+  async function loadOverview() {
+    const params = new URLSearchParams();
+    if (dashboardRange.startDate) params.set("startDate", dashboardRange.startDate);
+    if (dashboardRange.endDate) params.set("endDate", dashboardRange.endDate);
+    const data = await authRequest<any>(`/api/reports/overview?${params.toString()}`);
+    setOverview(data);
+  }
+
+  async function loadReports() {
+    const params = new URLSearchParams();
+    if (reportRange.startDate) params.set("startDate", reportRange.startDate);
+    if (reportRange.endDate) params.set("endDate", reportRange.endDate);
+    const qs = params.toString();
+
+    const [general, byUser, byItem] = await Promise.all([
+      authRequest<any>(`/api/reports/totals/general?${qs}`),
+      authRequest<any[]>(`/api/reports/totals/by-user?${qs}`),
+      authRequest<any[]>(`/api/reports/totals/by-item?${qs}`)
+    ]);
+
+    setReportGeneral(general);
+    setReportPeriod({
+      startDate: reportRange.startDate,
+      endDate: reportRange.endDate,
+      sales_count: Number(general?.sales_count || 0),
+      subtotal: Number(general?.subtotal || 0),
+      discount: Number(general?.discount || 0),
+      total: Number(general?.total || 0)
+    });
+    setReportByUser(byUser);
+    setReportByItem(byItem);
+  }
+
+  async function loadUsers() {
+    const [meta, list] = await Promise.all([
+      authRequest<{ roles: RoleType[]; permissionsCatalog: string[] }>("/api/users/meta"),
+      authRequest<any[]>("/api/users")
+    ]);
+
+    setUsers(list);
+    setAvailableRoles(meta.roles || ["ADMIN", "EDITOR", "VISUALIZADOR", "OP_CAIXA"]);
+    if (meta.permissionsCatalog && meta.permissionsCatalog.length > 0) {
+      setPermissionsCatalog(meta.permissionsCatalog);
     }
   }
 
-  async function refreshDashboard(encounterId?: number) {
-    try {
-      const query = encounterId ? `?encounterId=${encounterId}` : "";
-      const data = await authRequest<DashboardStats>(`/api/dashboard${query}`);
-      setDashboard(data);
-    } catch (err) {
-      setError(parseError(err));
-    }
+  async function loadPixConfig() {
+    const data = await authRequest<PixPublicConfig>("/api/pix/config");
+    setPixConfig(data);
   }
 
-  async function refreshUsers() {
-    try {
-      const data = await authRequest<AppUser[]>("/api/users");
-      setUsers(data);
-    } catch (err) {
-      setError(parseError(err));
-    }
+  async function loadPixSettings() {
+    const data = await authRequest<PixSettings>("/api/pix/settings");
+    setPixSettings({
+      enabled: Boolean(data.enabled),
+      pix_key: data.pix_key || "",
+      merchant_name: data.merchant_name || DEFAULT_PIX_SETTINGS.merchant_name,
+      merchant_city: data.merchant_city || DEFAULT_PIX_SETTINGS.merchant_city,
+      description: data.description || DEFAULT_PIX_SETTINGS.description,
+      txid_prefix: data.txid_prefix || DEFAULT_PIX_SETTINGS.txid_prefix
+    });
   }
 
-  async function refreshPdfTitleSettings() {
-    try {
-      const data = await authRequest<PdfTitleSettings>("/api/settings/pdf-title");
-      setPdfTitleSettings({
-        mode: data.mode || "SYSTEM_FONT",
-        font_url: data.font_url || null
-      });
-    } catch (err) {
-      setError(parseError(err));
-    }
+  async function loadAudit() {
+    const data = await authRequest<{ items: any[] }>("/api/audit?limit=100");
+    setAuditLogs(data.items || []);
   }
 
-  async function refreshAuditLogs(nextFilters?: Partial<AuditFilters>, nextOffset?: number) {
-    const mergedFilters: AuditFilters = {
-      ...auditFilters,
-      ...(nextFilters || {})
+  useEffect(() => {
+    if (!token || !currentUser) return;
+
+    const run = async () => {
+      try {
+        if (activeSection === "dashboard") {
+          await loadOverview();
+          return;
+        }
+        if (activeSection === "cash") {
+          await Promise.all([
+            loadCurrentCash(),
+            can(PERMISSIONS.REPORTS_VIEW) ? loadCashSessions() : Promise.resolve()
+          ]);
+          return;
+        }
+        if (activeSection === "sales") {
+          await Promise.all([
+            loadProducts(true),
+            can(PERMISSIONS.SALES_VIEW) ? loadSales() : Promise.resolve(),
+            can(PERMISSIONS.SALES_REGISTER) ? loadPixConfig() : Promise.resolve()
+          ]);
+          return;
+        }
+        if (activeSection === "stock") {
+          await loadProducts(false);
+          return;
+        }
+        if (activeSection === "reports") {
+          await loadReports();
+          return;
+        }
+        if (activeSection === "users") {
+          await loadUsers();
+          return;
+        }
+        if (activeSection === "settings") {
+          await loadPixSettings();
+          return;
+        }
+        if (activeSection === "audit") {
+          await loadAudit();
+        }
+      } catch (err) {
+        setError(parseError(err));
+      }
     };
-    const normalizedOffset = Math.max(0, Number(nextOffset ?? auditOffset) || 0);
 
-    try {
-      setAuditLoading(true);
-      const params = new URLSearchParams();
-      if (mergedFilters.encounterId) params.set("encounterId", String(mergedFilters.encounterId));
-      if (mergedFilters.userId) params.set("userId", String(mergedFilters.userId));
-      if (mergedFilters.action.trim()) params.set("action", mergedFilters.action.trim().toUpperCase());
-      if (mergedFilters.resourceType.trim()) params.set("resourceType", mergedFilters.resourceType.trim().toUpperCase());
-      params.set("limit", String(mergedFilters.limit || 50));
-      params.set("offset", String(normalizedOffset));
+    void run();
+  }, [activeSection, token, currentUser?.id]);
 
-      const data = await authRequest<AuditListResponse>(`/api/audit?${params.toString()}`);
-      setAuditFilters(mergedFilters);
-      setAuditLogs(data.items || []);
-      setAuditTotal(Number(data.total || 0));
-      setAuditOffset(Number(data.offset || 0));
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setAuditLoading(false);
+  useEffect(() => {
+    if (!token || !currentUser || activeSection !== "sales" || !can(PERMISSIONS.SALES_VIEW)) return;
+    void loadSales().catch((err) => setError(parseError(err)));
+  }, [salesStatusFilter]);
+
+  useEffect(() => {
+    if (saleForm.payment_method !== "PIX") {
+      setPixPreview(null);
+      return;
     }
-  }
+    setPixPreview((prev) => {
+      if (!prev) return prev;
+      if (Math.abs(prev.amount - saleSummary.total) < 0.001) return prev;
+      return null;
+    });
+  }, [saleForm.payment_method, saleSummary.total]);
 
-  async function refreshTeamList(encounterId: number, type: TeamType) {
-    try {
-      const data = await authRequest<Team[]>(`/api/teams?encounterId=${encounterId}&tipo=${type}`);
-      setTeams(data);
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function refreshMembers(encounterId: number, teamId: number) {
-    try {
-      const data = await authRequest<Member[]>(
-        `/api/members?encounterId=${encounterId}&teamId=${teamId}`
-      );
-      setMembers(data);
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function refreshAssets(encounterId: number) {
-    try {
-      const data = await authRequest<Asset[]>(`/api/assets?encounterId=${encounterId}`);
-      setAssets(data);
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleCreateEncounter(event: FormEvent<HTMLFormElement>) {
+  async function openCash(event: FormEvent) {
     event.preventDefault();
+    setError("");
     try {
-      await authRequest("/api/encounters", {
+      await authRequest("/api/cash/sessions/open", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(encounterForm)
+        body: JSON.stringify({
+          opening_amount: Number(openForm.openingAmount || 0),
+          observations: openForm.observations
+        })
       });
-      setEncounterForm({ nome: "", dataInicio: "", dataFim: "" });
-      await refreshEncounters();
-      await refreshDashboard();
-      success("Encontro cadastrado.");
+      setOpenForm({ openingAmount: "0", observations: "" });
+      setNotice("Caixa aberto com sucesso.");
+      await Promise.all([
+        loadCurrentCash(),
+        can(PERMISSIONS.REPORTS_VIEW) ? loadCashSessions() : Promise.resolve(),
+        can(PERMISSIONS.REPORTS_VIEW) ? loadOverview() : Promise.resolve()
+      ]);
     } catch (err) {
       setError(parseError(err));
     }
   }
 
-  async function handleDeleteEncounter(id: number) {
-    if (!window.confirm("Excluir este encontro?")) return;
-    try {
-      await authRequest(`/api/encounters/${id}`, { method: "DELETE" });
-      await refreshEncounters();
-      await refreshDashboard();
-      success("Encontro removido.");
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleSaveUser(event: FormEvent<HTMLFormElement>) {
+  async function registerCashMovement(event: FormEvent) {
     event.preventDefault();
-    if (!userForm.nome.trim() || !userForm.email.trim()) {
-      setError("Nome e e-mail são obrigatórios.");
+    setError("");
+    try {
+      await authRequest("/api/cash/sessions/current/movements", {
+        method: "POST",
+        body: JSON.stringify({
+          type: movementForm.type,
+          amount: Number(movementForm.amount || 0),
+          note: movementForm.note
+        })
+      });
+      setMovementForm({ type: "SUPRIMENTO", amount: "", note: "" });
+      setNotice("Movimento de caixa registrado.");
+      await Promise.all([
+        loadCurrentCash(),
+        can(PERMISSIONS.REPORTS_VIEW) ? loadOverview() : Promise.resolve()
+      ]);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function generateReportX() {
+    setError("");
+    try {
+      const response = await authRequest<any>("/api/cash/sessions/current/report-x");
+      setCashReport(response);
+      setNotice("Relatorio X gerado.");
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function closeCash(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      const response = await authRequest<any>("/api/cash/sessions/current/close", {
+        method: "POST",
+        body: JSON.stringify({
+          closing_amount: Number(closeForm.closingAmount || 0),
+          observations: closeForm.observations
+        })
+      });
+      setCashReport(response);
+      setCloseForm({ closingAmount: "", observations: "" });
+      setNotice("Caixa fechado com sucesso. Reducao Z gerada.");
+      await Promise.all([
+        loadCurrentCash(),
+        can(PERMISSIONS.REPORTS_VIEW) ? loadCashSessions() : Promise.resolve(),
+        can(PERMISSIONS.REPORTS_VIEW) ? loadOverview() : Promise.resolve()
+      ]);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function loadReductionZ(sessionId: number) {
+    setError("");
+    try {
+      const response = await authRequest<any>(`/api/cash/sessions/${sessionId}/reducao-z`);
+      setCashReport(response);
+      setNotice(`Reducao Z da sessao #${sessionId} carregada.`);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  function getSaleItemQuantity(productId: number) {
+    const found = saleItems.find((item) => item.product_id === productId);
+    return Number(found?.quantity || 0);
+  }
+
+  function setSaleItemQuantity(productId: number, nextQuantity: number) {
+    if (nextQuantity <= 0) {
+      setSaleItems((prev) => prev.filter((item) => item.product_id !== productId));
       return;
     }
-    if (!userForm.id && userForm.senha.trim().length < 8) {
-      setError("Informe uma senha com no mínimo 8 caracteres.");
-      return;
+
+    const normalized = String(Number(nextQuantity.toFixed(3)));
+    setSaleItems((prev) => {
+      const idx = prev.findIndex((item) => item.product_id === productId);
+      if (idx < 0) {
+        return [...prev, { product_id: productId, quantity: normalized }];
+      }
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], quantity: normalized };
+      return updated;
+    });
+  }
+
+  function quickAddSaleItem(productId: number) {
+    setSaleItemQuantity(productId, getSaleItemQuantity(productId) + 1);
+    setError("");
+  }
+
+  function updateSaleItem(productId: number, quantity: string) {
+    const next = Number(quantity || 0);
+    if (!Number.isFinite(next)) return;
+    setSaleItemQuantity(productId, next);
+  }
+
+  function increaseSaleItem(productId: number) {
+    setSaleItemQuantity(productId, getSaleItemQuantity(productId) + 1);
+  }
+
+  function decreaseSaleItem(productId: number) {
+    setSaleItemQuantity(productId, getSaleItemQuantity(productId) - 1);
+  }
+
+  function removeSaleItem(productId: number) {
+    setSaleItems((prev) => prev.filter((item) => item.product_id !== productId));
+  }
+
+  async function saveSale(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      if (saleForm.payment_method === "DINHEIRO" && Number(saleForm.received_amount || 0) < saleSummary.total) {
+        setError("Valor recebido menor que o total da venda.");
+        return;
+      }
+
+      const created = await authRequest<any>("/api/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          payment_method: saleForm.payment_method,
+          discount_amount: Number(saleForm.discount_amount || 0),
+          received_amount:
+            saleForm.payment_method === "DINHEIRO"
+              ? Number(saleForm.received_amount || saleSummary.total || 0)
+              : undefined,
+          items: saleItems.map((item) => ({ product_id: item.product_id, quantity: Number(item.quantity || 0) }))
+        })
+      });
+
+      setSelectedSale(created);
+      setSaleItems([]);
+      setSaleForm((prev) => ({ ...prev, payment_method: "DINHEIRO", discount_amount: "0", received_amount: "" }));
+      setPixPreview(null);
+      setNotice(`Venda ${created.sale_code} registrada com sucesso.`);
+      await Promise.all([
+        can(PERMISSIONS.SALES_VIEW) ? loadSales() : Promise.resolve(),
+        loadProducts(true),
+        loadCurrentCash(),
+        can(PERMISSIONS.REPORTS_VIEW) ? loadOverview() : Promise.resolve(),
+        can(PERMISSIONS.SALES_REGISTER) ? loadPixConfig() : Promise.resolve()
+      ]);
+    } catch (err) {
+      setError(parseError(err));
     }
-    if (userForm.senha && userForm.senha.trim().length > 0 && userForm.senha.trim().length < 8) {
-      setError("A senha deve ter no mínimo 8 caracteres.");
-      return;
+  }
+
+  async function loadSaleDetails(saleId: number) {
+    try {
+      const sale = await authRequest<any>(`/api/sales/${saleId}`);
+      setSelectedSale(sale);
+    } catch (err) {
+      setError(parseError(err));
     }
+  }
+
+  async function cancelSale() {
+    if (!selectedSale) return;
+    setError("");
+    try {
+      const updated = await authRequest<any>(`/api/sales/${selectedSale.id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason: cancelReason })
+      });
+      setSelectedSale(updated);
+      setCancelReason("");
+      setNotice(`Venda ${updated.sale_code} cancelada com sucesso.`);
+      await Promise.all([
+        can(PERMISSIONS.SALES_VIEW) ? loadSales() : Promise.resolve(),
+        loadProducts(true),
+        loadCurrentCash(),
+        can(PERMISSIONS.REPORTS_VIEW) ? loadOverview() : Promise.resolve()
+      ]);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+  async function saveProduct(event: FormEvent) {
+    event.preventDefault();
+    setError("");
 
     const payload = {
-      nome: userForm.nome.trim(),
-      email: userForm.email.trim(),
-      senha: userForm.senha.trim(),
+      nome: productForm.nome,
+      sku: productForm.sku,
+      categoria: productForm.categoria,
+      preco_venda: Number(productForm.preco_venda || 0),
+      custo_unitario: Number(productForm.custo_unitario || 0),
+      estoque_inicial: Number(productForm.estoque_inicial || 0),
+      ativo: productForm.ativo
+    };
+
+    try {
+      if (productForm.id > 0) {
+        await authRequest(`/api/products/${productForm.id}`, { method: "PUT", body: JSON.stringify(payload) });
+        setNotice("Produto atualizado.");
+      } else {
+        await authRequest("/api/products", { method: "POST", body: JSON.stringify(payload) });
+        setNotice("Produto criado.");
+      }
+
+      setProductForm({
+        id: 0,
+        nome: "",
+        sku: "",
+        categoria: "",
+        preco_venda: "0",
+        custo_unitario: "0",
+        estoque_inicial: "0",
+        ativo: true
+      });
+      await loadProducts(false);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function refreshProductAndMovements(productId: number) {
+    await loadProducts(false);
+    if (productId > 0) {
+      const movements = await authRequest<any[]>(`/api/products/${productId}/movements`);
+      setProductMovements(movements);
+    }
+  }
+
+  async function adjustStock(event: FormEvent) {
+    event.preventDefault();
+    if (!stockAdjust.productId) {
+      setError("Selecione um produto para ajuste.");
+      return;
+    }
+
+    const selectedProductId = stockAdjust.productId;
+
+    try {
+      await authRequest(`/api/products/${selectedProductId}/adjust-stock`, {
+        method: "POST",
+        body: JSON.stringify({
+          quantity_delta: Number(stockAdjust.quantity_delta || 0),
+          note: stockAdjust.note
+        })
+      });
+
+      setNotice("Ajuste de estoque aplicado.");
+      setStockAdjust((prev) => ({ ...prev, quantity_delta: "", note: "" }));
+      await refreshProductAndMovements(selectedProductId);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function restockProduct(event: FormEvent) {
+    event.preventDefault();
+    if (!stockRestock.productId) {
+      setError("Selecione um produto para reposicao.");
+      return;
+    }
+
+    const quantity = Number(stockRestock.quantity || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError("Informe uma quantidade positiva para reposicao.");
+      return;
+    }
+
+    const selectedProductId = stockRestock.productId;
+
+    try {
+      await authRequest(`/api/products/${selectedProductId}/restock`, {
+        method: "POST",
+        body: JSON.stringify({
+          quantity,
+          note: stockRestock.note
+        })
+      });
+
+      setNotice("Reposicao de estoque aplicada.");
+      setStockRestock((prev) => ({ ...prev, quantity: "", note: "" }));
+      await refreshProductAndMovements(selectedProductId);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  function editProduct(product: any) {
+    setProductForm({
+      id: product.id,
+      nome: product.nome || "",
+      sku: product.sku || "",
+      categoria: product.categoria || "",
+      preco_venda: String(product.preco_venda || 0),
+      custo_unitario: String(product.custo_unitario || 0),
+      estoque_inicial: "0",
+      ativo: Boolean(product.ativo)
+    });
+  }
+
+  async function showProductMovements(productId: number) {
+    try {
+      const movements = await authRequest<any[]>(`/api/products/${productId}/movements`);
+      setProductMovements(movements);
+      setStockAdjust((prev) => ({ ...prev, productId }));
+      setStockRestock((prev) => ({ ...prev, productId }));
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function saveUser(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+
+    const payload = {
+      nome: userForm.nome,
+      email: userForm.email,
+      senha: userForm.senha,
       permissao: userForm.permissao,
       ativo: userForm.ativo,
-      permissions: userForm.permissions
+      permissions: userForm.permissions || {}
     };
 
     try {
       if (userForm.id > 0) {
-        await authRequest(`/api/users/${userForm.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        success("Usuário atualizado.");
+        await authRequest(`/api/users/${userForm.id}`, { method: "PUT", body: JSON.stringify(payload) });
+        setNotice("Usuario atualizado.");
       } else {
-        await authRequest("/api/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        success("Usuário criado.");
+        await authRequest("/api/users", { method: "POST", body: JSON.stringify(payload) });
+        setNotice("Usuario criado.");
       }
-      resetUserForm();
-      await refreshUsers();
 
-      const me = await authRequest<MeResponse>("/api/auth/me");
-      setCurrentUser(me.user);
+      setUserForm({ id: 0, nome: "", email: "", senha: "", permissao: "EDITOR", ativo: true, permissions: {} });
+      await loadUsers();
     } catch (err) {
       setError(parseError(err));
     }
   }
 
-  function handleEditUser(user: AppUser) {
-    setUserForm({
-      id: user.id,
-      nome: user.nome,
-      email: user.email,
-      senha: "",
-      permissao: user.permissao,
-      ativo: user.ativo,
-      permissions:
-        Object.keys(user.effectivePermissions || {}).length > 0
-          ? { ...user.effectivePermissions }
-          : defaultPermissionsForRole(user.permissao)
-    });
-  }
-
-  async function handleDeleteUser(id: number) {
-    if (!window.confirm("Excluir usuário?")) return;
+  async function deleteUser(userId: number) {
     try {
-      await authRequest(`/api/users/${id}`, { method: "DELETE" });
-      if (userForm.id === id) {
-        resetUserForm();
-      }
-      await refreshUsers();
-      success("Usuário removido.");
-
-      const me = await authRequest<MeResponse>("/api/auth/me");
-      setCurrentUser(me.user);
+      await authRequest(`/api/users/${userId}`, { method: "DELETE" });
+      setNotice("Usuario removido.");
+      await loadUsers();
     } catch (err) {
       setError(parseError(err));
     }
   }
 
-  async function handleSaveTeam(encounterId: number, type: TeamType, event: FormEvent<HTMLFormElement>) {
+  async function savePixSettingsForm(event: FormEvent) {
     event.preventDefault();
-    const payload = {
-      encontroId: encounterId,
-      nome: teamForm.nome,
-      tipo: type,
-      ordem: Number(teamForm.ordem || 0),
-      corHex: type === "CIRCULO" ? teamForm.corHex : null,
-      slogan: type === "CIRCULO" ? teamForm.slogan : null
-    };
-
+    setError("");
     try {
-      if (teamForm.id > 0) {
-        await authRequest(`/api/teams/${teamForm.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        success("Registro atualizado.");
-      } else {
-        await authRequest("/api/teams", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        success("Registro criado.");
-      }
-      setTeamForm(EMPTY_TEAM_FORM);
-      await refreshTeamList(encounterId, type);
-      await refreshDashboard(encounterId);
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleDeleteTeam(encounterId: number, teamId: number, type: TeamType) {
-    if (!window.confirm("Excluir este registro?")) return;
-    try {
-      await authRequest(`/api/teams/${teamId}`, { method: "DELETE" });
-      await refreshTeamList(encounterId, type);
-      await refreshDashboard(encounterId);
-      success("Registro removido.");
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleSaveMember(encounterId: number, teamId: number, event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    try {
-      if (memberForm.id > 0) {
-        await authRequest(`/api/members/${memberForm.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            cargoNome: memberForm.cargoNome,
-            nomePrincipal: memberForm.nomePrincipal,
-            nomeSecundario: memberForm.nomeSecundario,
-            telefonePrincipal: memberForm.telefonePrincipal,
-            telefoneSecundario: memberForm.telefoneSecundario,
-            paroquia: memberForm.paroquia
-          })
-        });
-        success("Membro atualizado.");
-      } else {
-        await authRequest("/api/members", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            encontroId: encounterId,
-            equipeId: teamId,
-            cargoNome: memberForm.cargoNome,
-            nomePrincipal: memberForm.nomePrincipal,
-            nomeSecundario: memberForm.nomeSecundario,
-            telefonePrincipal: memberForm.telefonePrincipal,
-            telefoneSecundario: memberForm.telefoneSecundario,
-            paroquia: memberForm.paroquia
-          })
-        });
-        success("Membro salvo.");
-      }
-      setMemberForm(EMPTY_MEMBER_FORM);
-      await refreshMembers(encounterId, teamId);
-      await refreshDashboard(encounterId);
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  function handleEditMember(member: Member) {
-    setMemberForm({
-      id: member.id,
-      cargoNome: member.cargo_nome || "",
-      nomePrincipal: member.nome_principal,
-      nomeSecundario: member.nome_secundario || "",
-      telefonePrincipal: member.telefone_principal || "",
-      telefoneSecundario: member.telefone_secundario || "",
-      paroquia: member.paroquia || ""
-    });
-  }
-
-  function onMemberPhotoFileChange(encounterId: number, teamId: number, member: Member, file: File) {
-    openCrop(
-      {
-        kind: "MEMBER",
-        encounterId,
-        teamId,
-        memberId: member.id,
-        displayName: member.nome_principal
-      },
-      file,
-      CROP_PRESETS.MEMBER
-    );
-  }
-
-  async function handleDeleteMember(encounterId: number, teamId: number, memberId: number) {
-    try {
-      await authRequest(`/api/members/${memberId}`, { method: "DELETE" });
-      await refreshMembers(encounterId, teamId);
-      await refreshDashboard(encounterId);
-      success("Membro removido.");
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleValidateImportMembers(encounterId: number, teamId: number) {
-    if (!importFile) {
-      setError("Selecione um arquivo antes de validar.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("encounterId", String(encounterId));
-    formData.append("teamId", String(teamId));
-    formData.append("file", importFile);
-
-    setImportValidating(true);
-    try {
-      const response = await authRequest<MembersImportValidationResponse>("/api/imports/validate", {
-        method: "POST",
-        body: formData
-      });
-      setImportValidation(response.diagnostico);
-      setImportValidationTeamId(teamId);
-      setImportValidationOpen(true);
-
-      const blockingCount = (response.diagnostico.differences || []).filter(
-        (item) => item.severity === "error"
-      ).length;
-      const warningCount = (response.diagnostico.differences || []).filter(
-        (item) => item.severity === "warning"
-      ).length;
-
-      success(
-        `Validação concluída: ${response.diagnostico.summary.registrosPrevistos} registro(s) previsto(s), ` +
-          `${blockingCount} erro(s), ${warningCount} alerta(s).`
-      );
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setImportValidating(false);
-    }
-  }
-
-  async function handleImportMembers(encounterId: number, teamId: number) {
-    if (!importFile) return;
-    const formData = new FormData();
-    formData.append("encounterId", String(encounterId));
-    formData.append("teamId", String(teamId));
-    formData.append("file", importFile);
-
-    try {
-      const response = await authRequest<MembersImportResponse>("/api/imports", { method: "POST", body: formData });
-      const stats = response.estatisticas;
-      await refreshMembers(encounterId, teamId);
-      await refreshDashboard(encounterId);
-
-      if ((stats.total || 0) <= 0) {
-        const erroHint = (stats.erros || []).slice(0, 3).join(" | ");
-        setError(
-          `Importação concluída sem novos membros. Linhas lidas: ${stats.totalLinhasArquivo}. ` +
-            (erroHint ? `Detalhes: ${erroHint}` : "Verifique os títulos de cargo e colunas do arquivo.")
-        );
-        return;
-      }
-
-      setImportFile(null);
-      clearImportValidation();
-      success(
-        `Importação concluída: ${stats.total} membro(s), ${stats.casais} casal(is), ${stats.individuais} individual(is).`
-      );
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleSavePdfTitleMode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    try {
-      const data = await authRequest<PdfTitleSettings>("/api/settings/pdf-title", {
+      const payload = {
+        enabled: pixSettings.enabled,
+        pix_key: pixSettings.pix_key,
+        merchant_name: pixSettings.merchant_name,
+        merchant_city: pixSettings.merchant_city,
+        description: pixSettings.description,
+        txid_prefix: pixSettings.txid_prefix
+      };
+      const saved = await authRequest<PixSettings>("/api/pix/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: pdfTitleSettings.mode })
+        body: JSON.stringify(payload)
       });
-      setPdfTitleSettings({
-        mode: data.mode || "SYSTEM_FONT",
-        font_url: data.font_url || null
-      });
-      success("Configuração de título do PDF atualizada.");
+      setPixSettings(saved);
+      setNotice("Configuracoes PIX salvas.");
+      await loadPixConfig();
     } catch (err) {
       setError(parseError(err));
     }
   }
 
-  async function handleUploadPdfTitleFont(file: File | null) {
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const data = await authRequest<PdfTitleSettings>("/api/settings/pdf-title/font", {
-        method: "POST",
-        body: formData
-      });
-      setPdfTitleSettings({
-        mode: data.mode || "CUSTOM_FONT",
-        font_url: data.font_url || null
-      });
-      success("Fonte personalizada enviada para o PDF.");
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleImportCircles(encounterId: number) {
-    if (!circleImportFile) return;
-    const formData = new FormData();
-    formData.append("encounterId", String(encounterId));
-    formData.append("file", circleImportFile);
-
-    try {
-      const response = await authRequest<CirclesImportResponse>("/api/imports/circles", { method: "POST", body: formData });
-      const stats = response.estatisticas;
-      setCircleImportFile(null);
-      await refreshTeamList(encounterId, "CIRCULO");
-      await refreshDashboard(encounterId);
-      success(
-        `Importação geral concluída: ${stats.circulosCriados} círculo(s) criado(s), ${stats.membrosCriados} membro(s) novo(s).`
-      );
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function openCrop(target: CropTarget, file: File, preset: CropPreset) {
-    try {
-      const source = await readFileAsDataUrl(file);
-      setCrop({
-        source,
-        cropBox: { unit: "%", x: 0, y: 0, width: 100, height: 100 },
-        pixelCrop: { unit: "px", x: 0, y: 0, width: 0, height: 0 },
-        renderWidth: 0,
-        renderHeight: 0,
-        preset,
-        target
-      });
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  function handleCropImageLoad(event: SyntheticEvent<HTMLImageElement>) {
-    const image = event.currentTarget;
-    const renderWidth = image.width || image.clientWidth || image.naturalWidth;
-    const renderHeight = image.height || image.clientHeight || image.naturalHeight;
-    if (!renderWidth || !renderHeight) return;
-
-    setCrop((prev) => {
-      if (!prev) return prev;
-      const cropBox = prev.preset.lockAspect
-        ? centeredAspectCrop(renderWidth, renderHeight, prev.preset.aspect)
-        : ({ unit: "%", x: 0, y: 0, width: 100, height: 100 } as PercentCrop);
-      return {
-        ...prev,
-        cropBox,
-        pixelCrop: cropToPixel(cropBox, renderWidth, renderHeight),
-        renderWidth,
-        renderHeight
-      };
-    });
-  }
-
-  async function handleApplyCrop() {
-    if (!crop) return;
-    setCropUploading(true);
-    try {
-      const image = await loadImage(crop.source);
-      const renderWidth = crop.renderWidth || image.width || image.naturalWidth;
-      const renderHeight = crop.renderHeight || image.height || image.naturalHeight;
-      if (!renderWidth || !renderHeight) {
-        throw new Error("Nao foi possivel calcular o tamanho da area de recorte.");
-      }
-
-      const currentPixelCrop =
-        crop.pixelCrop.width > 0 && crop.pixelCrop.height > 0
-          ? crop.pixelCrop
-          : cropToPixel(crop.cropBox, renderWidth, renderHeight);
-      const scaleX = image.naturalWidth / renderWidth;
-      const scaleY = image.naturalHeight / renderHeight;
-      const pixelCrop: PixelCrop = {
-        unit: "px",
-        x: Math.round(currentPixelCrop.x * scaleX),
-        y: Math.round(currentPixelCrop.y * scaleY),
-        width: Math.round(currentPixelCrop.width * scaleX),
-        height: Math.round(currentPixelCrop.height * scaleY)
-      };
-      if (pixelCrop.width < 1 || pixelCrop.height < 1) {
-        throw new Error("Defina a área de corte antes de enviar.");
-      }
-
-      const blob = await renderCropBlob(crop.source, pixelCrop, crop.preset);
-      const file = new File([blob], `crop_${Date.now()}.jpg`, { type: "image/jpeg" });
-
-      if (crop.target.kind === "TEAM") {
-        const formData = new FormData();
-        formData.append("file", file);
-        await authRequest(`/api/teams/${crop.target.teamId}/photo`, { method: "POST", body: formData });
-        await refreshTeamList(crop.target.encounterId, crop.target.teamType);
-        success(`Imagem de ${crop.target.displayName} enviada.`);
-      }
-
-      if (crop.target.kind === "MEMBER") {
-        const formData = new FormData();
-        formData.append("file", file);
-        await authRequest(`/api/members/${crop.target.memberId}/photo`, { method: "POST", body: formData });
-        await refreshMembers(crop.target.encounterId, crop.target.teamId);
-        success(`Imagem de ${crop.target.displayName} enviada.`);
-      }
-
-      if (crop.target.kind === "ASSET") {
-        const formData = new FormData();
-        formData.append("encounterId", String(crop.target.encounterId));
-        formData.append("tipo", crop.target.tipo);
-        formData.append("titulo", crop.target.titulo);
-        formData.append("ordem", String(crop.target.ordem || 0));
-        formData.append("file", file);
-        await authRequest("/api/assets", { method: "POST", body: formData });
-        setAssetForm({ ...EMPTY_ASSET_FORM });
-        await refreshAssets(crop.target.encounterId);
-        await refreshDashboard(crop.target.encounterId);
-        success("Arte enviada.");
-      }
-
-      setCrop(null);
-    } catch (err) {
-      setError(parseError(err));
-    } finally {
-      setCropUploading(false);
-    }
-  }
-
-  async function handleSaveAsset(encounterId: number, event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!assetForm.file) {
-      setError("Selecione um arquivo para envio.");
+  async function generatePixQrPreview() {
+    if (!can(PERMISSIONS.SALES_REGISTER)) {
+      setError("Sem permissao para gerar cobranca PIX.");
       return;
     }
 
-    openCrop(
-      {
-        kind: "ASSET",
-        encounterId,
-        tipo: assetForm.tipo,
-        titulo: assetForm.titulo,
-        ordem: Number(assetForm.ordem || 0),
-        displayName: assetForm.titulo || assetForm.tipo
-      },
-      assetForm.file,
-      CROP_PRESETS.A4
-    );
-  }
-
-  async function handleDeleteAsset(encounterId: number, assetId: number) {
-    if (!window.confirm("Excluir asset?")) return;
-    try {
-      await authRequest(`/api/assets/${assetId}`, { method: "DELETE" });
-      await refreshAssets(encounterId);
-      await refreshDashboard(encounterId);
-      success("Asset removido.");
-    } catch (err) {
-      setError(parseError(err));
+    if (saleSummary.total <= 0) {
+      setError("Adicione itens antes de gerar o QR PIX.");
+      return;
     }
-  }
 
-  async function handlePreviewTeamPdf(teamId: number) {
+    setError("");
+    setPixLoading(true);
     try {
-      const blob = await requestBlob(`/api/quadrante/team/${teamId}`, token);
-      const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handlePreviewEncounterPdf(encounterId: number) {
-    try {
-      const blob = await requestBlob(`/api/quadrante/encounter/${encounterId}`, token);
-      const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function handleUploadTeamTitleArt(encounterId: number, type: TeamType, teamId: number, file: File | null) {
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      await authRequest(`/api/teams/${teamId}/title-art`, {
+      const preview = await authRequest<PixPreview>("/api/pix/qr", {
         method: "POST",
-        body: formData
+        body: JSON.stringify({
+          amount: saleSummary.total,
+          description: pixConfig.description
+        })
       });
-      await refreshTeamList(encounterId, type);
-      success("Arte do título enviada.");
+      setPixPreview(preview);
     } catch (err) {
       setError(parseError(err));
+    } finally {
+      setPixLoading(false);
     }
   }
 
-  function onTeamPhotoFileChange(
-    event: ChangeEvent<HTMLInputElement>,
-    encounterId: number,
-    type: TeamType,
-    team: Team
-  ) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    const preset = type === "CIRCULO" ? CROP_PRESETS.A4 : CROP_PRESETS.TEAM;
-
-    openCrop(
-      {
-        kind: "TEAM",
-        encounterId,
-        teamId: team.id,
-        teamType: type,
-        displayName: type === "CIRCULO" ? `Cartaz de ${team.nome}` : team.nome
-      },
-      file,
-      preset
-    );
+  async function copyPixCode() {
+    if (!pixPreview?.brcode) return;
+    try {
+      await navigator.clipboard.writeText(pixPreview.brcode);
+      setNotice("Codigo PIX copiado.");
+    } catch (_err) {
+      setError("Nao foi possivel copiar o codigo PIX neste dispositivo.");
+    }
   }
-
-  const shell = {
-    encounters,
-    users,
-    teams,
-    members,
-    assets,
-    auditLogs,
-    auditTotal,
-    auditOffset,
-    auditLoading,
-    auditFilters,
-    dashboard,
-    encounterForm,
-    userForm,
-    teamForm,
-    memberForm,
-    assetForm,
-    pdfTitleSettings,
-    importFile,
-    circleImportFile,
-    importValidation,
-    importValidationTeamId,
-    importValidationOpen,
-    importValidating,
-    crop,
-    cropUploading,
-    currentUser,
-    permissionsCatalog,
-    can
-  };
-
-  const actions = {
-    setEncounterForm,
-    setUserForm,
-    setTeamForm,
-    setMemberForm,
-    setAssetForm,
-    setPdfTitleSettings,
-    setAuditFilters,
-    setImportFile,
-    setCircleImportFile,
-    setImportValidationOpen,
-    setCrop,
-    refreshEncounters,
-    refreshDashboard,
-    refreshUsers,
-    refreshPdfTitleSettings,
-    refreshAuditLogs,
-    refreshTeamList,
-    refreshMembers,
-    refreshAssets,
-    handleCreateEncounter,
-    handleDeleteEncounter,
-    handleSaveUser,
-    handleEditUser,
-    resetUserForm,
-    handleDeleteUser,
-    handleSavePdfTitleMode,
-    handleUploadPdfTitleFont,
-    handleSaveTeam,
-    handleDeleteTeam,
-    handleSaveMember,
-    handleEditMember,
-    cancelMemberEdit: () => setMemberForm(EMPTY_MEMBER_FORM),
-    onMemberPhotoFileChange,
-    handleDeleteMember,
-    handleValidateImportMembers,
-    handleImportMembers,
-    handleImportCircles,
-    handleApplyCrop,
-    onTeamPhotoFileChange,
-    handleUploadTeamTitleArt,
-    handleSaveAsset,
-    handleDeleteAsset,
-    handlePreviewTeamPdf,
-    handlePreviewEncounterPdf,
-    updateUserRole: (role: RoleType) =>
-      setUserForm((prev) => ({ ...prev, permissao: role, permissions: defaultPermissionsForRole(role) })),
-    toggleUserPermission: (permissionKey: string, value: boolean) =>
-      setUserForm((prev) => ({
-        ...prev,
-        permissions: { ...prev.permissions, [permissionKey]: value }
-      })),
-    setLoginForm,
-    handleLogin,
-    handleLogout,
-    openHelp,
-    closeHelp,
-    clearImportValidation,
-    openImportValidationReport
-  };
-
-  const canViewDashboard = can(PERMISSIONS.DASHBOARD_VIEW);
-  const canViewEncounters = can(PERMISSIONS.ENCOUNTERS_VIEW);
-  const canViewUsers = can(PERMISSIONS.USERS_VIEW);
-  const canViewTeams = can(PERMISSIONS.TEAMS_VIEW);
-  const canViewMembers = can(PERMISSIONS.MEMBERS_VIEW);
-  const canViewAssets = can(PERMISSIONS.ASSETS_VIEW);
-
-  const defaultPath = canViewDashboard
-    ? "/dashboard"
-    : canViewEncounters
-      ? "/encounters"
-      : canViewUsers
-        ? "/settings"
-        : "/dashboard";
 
   if (authLoading) {
     return (
-      <div className="auth-layout">
-        <div className="auth-card">
-          <h2>Carregando</h2>
-          <p className="muted">Validando sessão.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!currentUser) {
-    return (
-      <>
-        <LoginScreen
-          loginForm={loginForm}
-          onChange={setLoginForm}
-          onSubmit={handleLogin}
-          error={error}
-          onHelp={() => openHelp("LOGIN")}
-        />
-        <HelpModal content={activeHelp} onClose={closeHelp} />
-      </>
-    );
-  }
-
-  return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <div className="brand">
-          <h1>EJC Connect</h1>
-          <p>Painel administrativo</p>
-        </div>
-        <nav className="nav-list">
-          {canViewDashboard && (
-            <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}>
-              Dashboard
-            </NavLink>
-          )}
-          {canViewEncounters && (
-            <NavLink to="/encounters" className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}>
-              Encontros
-            </NavLink>
-          )}
-          {canViewUsers && (
-            <NavLink to="/settings" className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}>
-              Configuração
-            </NavLink>
-          )}
-        </nav>
-        <div className="sidebar-user">
-          <strong>{currentUser.nome}</strong>
-          <span>{currentUser.permissao}</span>
-        </div>
-        <button className="theme-toggle" onClick={handleLogout}>
-          Sair
-        </button>
-        <button
-          className="theme-toggle"
-          onClick={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-        >
-          {theme === "light" ? "Tema escuro" : "Tema claro"}
-        </button>
-      </aside>
-
-      <main className="content">
-        {(message || error) && <div className={`notice ${error ? "error" : "ok"}`}>{error || message}</div>}
-
-        <Routes>
-          <Route path="/" element={<Navigate to={defaultPath} replace />} />
-          <Route
-            path="/dashboard"
-            element={canViewDashboard ? <DashboardScreen shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/settings"
-            element={canViewUsers ? <SettingsScreen shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/encounters"
-            element={canViewEncounters ? <EncountersScreen shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/encounters/:encounterId"
-            element={canViewEncounters ? <EncounterHubScreen shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/encounters/:encounterId/teams"
-            element={canViewTeams ? <TeamListScreen type="TRABALHO" title="Equipe" shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/encounters/:encounterId/circles"
-            element={canViewTeams ? <TeamListScreen type="CIRCULO" title="Círculo" shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/encounters/:encounterId/teams/:teamId"
-            element={canViewTeams && canViewMembers ? <TeamDetailScreen type="TRABALHO" title="Equipe" shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/encounters/:encounterId/circles/:teamId"
-            element={canViewTeams && canViewMembers ? <TeamDetailScreen type="CIRCULO" title="Círculo" shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route
-            path="/encounters/:encounterId/assets"
-            element={canViewAssets ? <AssetsScreen shell={shell} actions={actions} /> : <AccessDeniedScreen />}
-          />
-          <Route path="*" element={<Navigate to={defaultPath} replace />} />
-        </Routes>
+      <main className="auth-layout">
+        <section className="panel auth-panel">
+          <h1>Carregando Caixa EJC...</h1>
+        </section>
       </main>
+    );
+  }
 
-      {crop && (
-        <div className="crop-backdrop">
-          <div className="crop-modal">
-            <h2>Recortar imagem: {crop.target.displayName}</h2>
-            <p className="crop-hint">Proporção: {crop.preset.label}</p>
-            <div className="crop-body">
-              <div className="crop-preview">
-                <ReactCrop
-                  crop={crop.cropBox}
-                  onChange={(pixelCrop, percentCrop) =>
-                    setCrop((prev) => (prev ? { ...prev, cropBox: percentCrop, pixelCrop } : prev))
-                  }
-                  aspect={crop.preset.lockAspect ? crop.preset.aspect : undefined}
-                  minWidth={40}
-                  minHeight={40}
-                  ruleOfThirds
-                  className="cropper-frame"
-                >
-                  <img src={crop.source} alt="Imagem para recorte" onLoad={handleCropImageLoad} />
-                </ReactCrop>
-              </div>
-              <p className="muted crop-helper">Arraste e redimensione a área usando as alças do recorte.</p>
-            </div>
-            <div className="actions-row crop-footer">
-              <button className="ghost" onClick={() => setCrop(null)}>
-                Cancelar
-              </button>
-              <button disabled={cropUploading} onClick={() => handleApplyCrop()}>
-                {cropUploading ? "Enviando..." : "Aplicar crop e enviar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  if (!token || !currentUser) {
+    return (
+      <main className="auth-layout">
+        <form className="panel auth-panel" onSubmit={handleLogin}>
+          <h1>Caixa EJC</h1>
+          <p>Sistema de frente de caixa para vendinha.</p>
 
-      <ImportValidationModal
-        diagnostics={importValidationOpen ? importValidation : null}
-        onClose={() => setImportValidationOpen(false)}
-      />
-      <HelpModal content={activeHelp} onClose={closeHelp} />
-    </div>
-  );
-}
+          {error && <div className="notice error">{error}</div>}
 
-function LoginScreen({
-  loginForm,
-  onChange,
-  onSubmit,
-  error,
-  onHelp
-}: {
-  loginForm: { email: string; senha: string };
-  onChange: (value: { email: string; senha: string }) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  error: string;
-  onHelp: () => void;
-}) {
-  return (
-    <div className="auth-layout">
-      <div className="auth-card">
-        <div className="panel-head">
-          <h2>Acesso ao EJC Connect</h2>
-          <HelpButton onClick={onHelp} label="Ajuda de login" />
-        </div>
-        <p className="muted">Entre com seu usuário para acessar o painel administrativo.</p>
-        <form className="grid-form" onSubmit={onSubmit}>
           <label>
             E-mail
             <input
-              required
               type="email"
-              autoComplete="username"
+              required
               value={loginForm.email}
-              onChange={(event) => onChange({ ...loginForm, email: event.target.value })}
+              onChange={(event) => setLoginForm((prev) => ({ ...prev, email: event.target.value }))}
             />
           </label>
+
           <label>
             Senha
             <input
-              required
               type="password"
-              autoComplete="current-password"
+              required
               value={loginForm.senha}
-              onChange={(event) => onChange({ ...loginForm, senha: event.target.value })}
+              onChange={(event) => setLoginForm((prev) => ({ ...prev, senha: event.target.value }))}
             />
           </label>
+
           <button type="submit">Entrar</button>
         </form>
-        {error && <p className="auth-error">{error}</p>}
-      </div>
-    </div>
-  );
-}
-
-function HelpButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button type="button" className="help-trigger ghost" onClick={onClick} aria-label={label} title={label}>
-      ?
-    </button>
-  );
-}
-
-function HelpModal({ content, onClose }: { content: HelpContent | null; onClose: () => void }) {
-  if (!content) return null;
+      </main>
+    );
+  }
 
   return (
-    <div className="crop-backdrop help-backdrop" onClick={onClose}>
-      <div className="help-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="panel-head help-head">
-          <div>
-            <h2>{content.title}</h2>
-            <p className="muted">{content.subtitle}</p>
-          </div>
-          <button type="button" className="ghost help-close" onClick={onClose}>
-            Fechar
-          </button>
-        </div>
-        <div className="help-body">
-          {content.sections.map((section, index) => (
-            <section className="help-section" key={`${section.title}-${index}`}>
-              <h3>{section.title}</h3>
-              <div className="help-html" dangerouslySetInnerHTML={{ __html: section.html }} />
-            </section>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <h2>Caixa EJC</h2>
+        <p className="muted">PDV web em Docker</p>
+
+        <nav className="nav-list">
+          {visibleSections.map((item) => (
+            <button
+              key={item.key}
+              className={`nav-item ${activeSection === item.key ? "active" : ""}`}
+              onClick={() => setActiveSection(item.key)}
+            >
+              {item.label}
+            </button>
           ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+        </nav>
 
-function ImportValidationModal({
-  diagnostics,
-  onClose
-}: {
-  diagnostics: MembersImportValidation | null;
-  onClose: () => void;
-}) {
-  if (!diagnostics) return null;
-
-  const errorsCount = diagnostics.differences.filter((item) => item.severity === "error").length;
-  const warningsCount = diagnostics.differences.filter((item) => item.severity === "warning").length;
-  const infoCount = diagnostics.differences.filter((item) => item.severity === "info").length;
-
-  return (
-    <div className="crop-backdrop help-backdrop" onClick={onClose}>
-      <div className="help-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="panel-head help-head">
-          <div>
-            <h2>Validação de Importação</h2>
-            <p className="muted">
-              Equipe: <strong>{diagnostics.team.nome}</strong> | Perfil detectado:{" "}
-              <strong>{diagnostics.team.profileLabel}</strong>
-            </p>
-          </div>
-          <button type="button" className="ghost help-close" onClick={onClose}>
-            Fechar
-          </button>
+        <div className="sidebar-user">
+          <strong>{currentUser.nome}</strong>
+          <span>{currentUser.email}</span>
+          <span>Perfil: {ROLE_LABELS[currentUser.permissao] || currentUser.permissao}</span>
+          <span>Permissoes: {permissionsCatalog.length}</span>
         </div>
 
-        <div className="help-body">
-          <section className="help-section">
-            <h3>Resumo</h3>
-            <div className="stats-grid">
-              <article className="stat-card">
-                <span>Linhas lidas</span>
-                <strong>{diagnostics.summary.linhasLidas}</strong>
-              </article>
-              <article className="stat-card">
-                <span>Registros previstos</span>
-                <strong>{diagnostics.summary.registrosPrevistos}</strong>
-              </article>
-              <article className="stat-card">
-                <span>Casais previstos</span>
-                <strong>{diagnostics.summary.casaisPrevistos}</strong>
-              </article>
-              <article className="stat-card">
-                <span>Individuais previstos</span>
-                <strong>{diagnostics.summary.individuaisPrevistos}</strong>
-              </article>
+        <button className="ghost" onClick={handleLogout}>Sair</button>
+      </aside>
+
+      <main className="content">
+        {notice && <div className="notice ok">{notice}</div>}
+        {error && <div className="notice error">{error}</div>}
+
+        {activeSection === "dashboard" && (
+          <section className="stack">
+            <div className="panel">
+              <div className="panel-head">
+                <h1>Dashboard de vendas</h1>
+                <div className="actions-row">
+                  <input type="date" value={dashboardRange.startDate} onChange={(event) => setDashboardRange((prev) => ({ ...prev, startDate: event.target.value }))} />
+                  <input type="date" value={dashboardRange.endDate} onChange={(event) => setDashboardRange((prev) => ({ ...prev, endDate: event.target.value }))} />
+                  <button className="ghost" onClick={() => void loadOverview().catch((err) => setError(parseError(err)))}>Atualizar</button>
+                </div>
+              </div>
+
+              {overview ? (
+                <div className="stats-grid">
+                  <article className="stat-card"><span>Vendas</span><strong>{overview.totals?.sales_count || 0}</strong></article>
+                  <article className="stat-card"><span>Subtotal</span><strong>{formatMoney(overview.totals?.subtotal)}</strong></article>
+                  <article className="stat-card"><span>Descontos</span><strong>{formatMoney(overview.totals?.discount)}</strong></article>
+                  <article className="stat-card"><span>Total Liquido</span><strong>{formatMoney(overview.totals?.total)}</strong></article>
+                </div>
+              ) : <p className="muted">Sem dados no periodo.</p>}
             </div>
-            <div className="audit-meta">
-              <span className="chip danger">Erros: {errorsCount}</span>
-              <span className="chip">Alertas: {warningsCount}</span>
-              <span className="chip">Informações: {infoCount}</span>
+
+            <div className="panel two-col">
+              <div>
+                <h3>Caixa atual</h3>
+                {overview?.open_session ? (
+                  <p>Caixa #{overview.open_session.id} aberto por {overview.open_session.opened_by_name} em {formatDateTime(overview.open_session.opened_at)} com abertura de {formatMoney(overview.open_session.opening_amount)}.</p>
+                ) : <p className="muted">Nao ha caixa aberto no momento.</p>}
+
+                <h3 style={{ marginTop: 16 }}>Vendas por pagamento</h3>
+                <table>
+                  <thead><tr><th>Forma</th><th>Qtd.</th><th>Total</th></tr></thead>
+                  <tbody>
+                    {(overview?.by_payment || []).map((item: any) => (
+                      <tr key={item.payment_method}><td>{PAYMENT_LABELS[item.payment_method as PaymentMethod]}</td><td>{item.count}</td><td>{formatMoney(item.total)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <h3>Top itens vendidos</h3>
+                <table>
+                  <thead><tr><th>Item</th><th>Qtd.</th><th>Total</th></tr></thead>
+                  <tbody>
+                    {(overview?.top_products || []).map((item: any) => (
+                      <tr key={item.product_id}><td>{item.product_name}</td><td>{item.quantity}</td><td>{formatMoney(item.total)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <h3 style={{ marginTop: 16 }}>Estoque baixo</h3>
+                <table>
+                  <thead><tr><th>Item</th><th>Estoque</th></tr></thead>
+                  <tbody>
+                    {(overview?.low_stock || []).map((item: any) => (
+                      <tr key={item.id}><td>{item.nome}</td><td>{item.estoque_atual}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
+        )}
 
-          <section className="help-section">
-            <h3>Regras aplicadas</h3>
-            <ul className="help-list">
-              {diagnostics.team.rules.map((rule, index) => (
-                <li key={`${rule}-${index}`}>{rule}</li>
-              ))}
-            </ul>
-          </section>
+        {activeSection === "cash" && (
+          <section className="stack">
+            <div className="panel">
+              <div className="panel-head">
+                <h1>Abertura e fechamento de caixa</h1>
+                <div className="actions-row">
+                  <button className="ghost" onClick={() => void loadCurrentCash().catch((err) => setError(parseError(err)))}>Atualizar caixa</button>
+                  {can(PERMISSIONS.REPORTS_VIEW) && (
+                    <button className="ghost" onClick={() => void loadCashSessions().catch((err) => setError(parseError(err)))}>
+                      Atualizar sessoes
+                    </button>
+                  )}
+                </div>
+              </div>
 
-          <section className="help-section">
-            <h3>Diferenças detectadas</h3>
-            {diagnostics.differences.length === 0 ? (
-              <p className="muted">Nenhuma diferença relevante detectada.</p>
-            ) : (
-              <ul className="help-list">
-                {diagnostics.differences.map((item, index) => (
-                  <li key={`${item.code}-${index}`}>
-                    <strong>[{item.severity.toUpperCase()}]</strong> {item.message}
-                  </li>
-                ))}
-              </ul>
+              {!cashCurrent.session ? (
+                <form className="grid-form two" onSubmit={openCash}>
+                  <label>Valor de abertura<input type="number" min="0" step="0.01" required value={openForm.openingAmount} onChange={(event) => setOpenForm((prev) => ({ ...prev, openingAmount: event.target.value }))} /></label>
+                  <label>Observacoes<input value={openForm.observations} onChange={(event) => setOpenForm((prev) => ({ ...prev, observations: event.target.value }))} /></label>
+                  <button type="submit" disabled={!can(PERMISSIONS.CASH_OPEN)}>Abrir caixa</button>
+                </form>
+              ) : (
+                <div className="stack-inner">
+                  <div className="summary-card">
+                    <p>Caixa #{cashCurrent.session.id} aberto por {cashCurrent.session.opened_by_name} em {formatDateTime(cashCurrent.session.opened_at)}.</p>
+                    <p>Abertura: <strong>{formatMoney(cashCurrent.session.opening_amount)}</strong></p>
+                    <p>Esperado em dinheiro: <strong>{formatMoney(cashCurrent.report?.totals?.cash_expected || 0)}</strong></p>
+                  </div>
+
+                  {can(PERMISSIONS.CASH_MOVEMENT) ? (
+                    <form className="grid-form three" onSubmit={registerCashMovement}>
+                      <label>Tipo<select value={movementForm.type} onChange={(event) => setMovementForm((prev) => ({ ...prev, type: event.target.value }))}><option value="SUPRIMENTO">Suprimento</option><option value="SANGRIA">Sangria</option></select></label>
+                      <label>Valor<input type="number" min="0" step="0.01" required value={movementForm.amount} onChange={(event) => setMovementForm((prev) => ({ ...prev, amount: event.target.value }))} /></label>
+                      <label>Observacao<input value={movementForm.note} onChange={(event) => setMovementForm((prev) => ({ ...prev, note: event.target.value }))} /></label>
+                      <button type="submit">Registrar movimento</button>
+                    </form>
+                  ) : (
+                    <p className="muted">Sem permissao para suprimento/sangria.</p>
+                  )}
+
+                  {can(PERMISSIONS.REPORTS_VIEW) && (
+                    <div className="actions-row">
+                      <button onClick={() => void generateReportX()}>Gerar Relatorio X</button>
+                    </div>
+                  )}
+
+                  <form className="grid-form two" onSubmit={closeCash}>
+                    <label>Valor apurado no fechamento<input type="number" min="0" step="0.01" required value={closeForm.closingAmount} onChange={(event) => setCloseForm((prev) => ({ ...prev, closingAmount: event.target.value }))} /></label>
+                    <label>Observacoes de fechamento<input value={closeForm.observations} onChange={(event) => setCloseForm((prev) => ({ ...prev, observations: event.target.value }))} /></label>
+                    <button type="submit" className="danger" disabled={!can(PERMISSIONS.CASH_CLOSE)}>Fechar caixa (Reducao Z)</button>
+                  </form>
+                </div>
+              )}
+            </div>
+
+            {can(PERMISSIONS.REPORTS_VIEW) && cashReport && (
+              <div className="panel">
+                <h3>{cashReport.report_type === "X" ? "Relatorio X" : "Reducao Z"} | Caixa #{cashReport.session.id}</h3>
+                <p className="muted">Gerado em {formatDateTime(cashReport.generated_at)}</p>
+                <div className="stats-grid">
+                  <article className="stat-card"><span>Total de vendas</span><strong>{cashReport.report?.totals?.sales_count || 0}</strong></article>
+                  <article className="stat-card"><span>Total liquido</span><strong>{formatMoney(cashReport.report?.totals?.total)}</strong></article>
+                  <article className="stat-card"><span>Esperado em dinheiro</span><strong>{formatMoney(cashReport.report?.totals?.cash_expected)}</strong></article>
+                  {cashReport.session?.status === "CLOSED" && <article className="stat-card"><span>Diferenca fechamento</span><strong>{formatMoney(cashReport.session?.difference_amount)}</strong></article>}
+                </div>
+                <table>
+                  <thead><tr><th>Pagamento</th><th>Qtd.</th><th>Total</th></tr></thead>
+                  <tbody>
+                    {PAYMENT_METHODS.map((method) => (
+                      <tr key={method}><td>{PAYMENT_LABELS[method]}</td><td>{cashReport.report?.totals?.count_by_payment?.[method] || 0}</td><td>{formatMoney(cashReport.report?.totals?.by_payment?.[method] || 0)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {can(PERMISSIONS.REPORTS_VIEW) && (
+              <div className="panel">
+                <h3>Historico de caixas</h3>
+                <table>
+                  <thead><tr><th>ID</th><th>Abertura</th><th>Fechamento</th><th>Status</th><th>Diferenca</th><th>Acoes</th></tr></thead>
+                  <tbody>
+                    {cashSessions.map((session) => (
+                      <tr key={session.id}>
+                        <td>#{session.id}</td><td>{formatDateTime(session.opened_at)}</td><td>{formatDateTime(session.closed_at)}</td><td>{session.status}</td><td>{formatMoney(session.difference_amount)}</td>
+                        <td>{session.status === "CLOSED" ? <button className="ghost" onClick={() => void loadReductionZ(session.id)}>Ver Z</button> : <span className="muted">Em aberto</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
+        )}
 
-          <section className="help-section">
-            <h3>Cargos encontrados</h3>
-            <div className="help-html">
-              <table className="help-table">
-                <thead>
-                  <tr>
-                    <th>Cargo</th>
-                    <th>Modo</th>
-                    <th>Linhas</th>
-                    <th>Registros previstos</th>
-                    <th>Casais</th>
-                    <th>Individuais</th>
-                    <th>Sobras casal</th>
-                  </tr>
-                </thead>
+        {activeSection === "sales" && (
+          <section className="stack">
+            <div className="panel">
+              <div className="panel-head">
+                <h1>PDV Caixa EJC</h1>
+                <div className="actions-row">
+                  <button className="ghost" onClick={() => void loadProducts(true).catch((err) => setError(parseError(err)))}>
+                    Atualizar itens
+                  </button>
+                </div>
+              </div>
+
+              <div className="pdv-layout">
+                <div className="pdv-products">
+                  <label>
+                    Buscar item
+                    <input
+                      placeholder="Nome, SKU ou categoria"
+                      value={saleSearch}
+                      onChange={(event) => setSaleSearch(event.target.value)}
+                    />
+                  </label>
+
+                  <div className="pdv-product-grid">
+                    {filteredSaleProducts.map((product) => (
+                      <article key={product.id} className="pdv-product-card">
+                        <div>
+                          <strong>{product.nome}</strong>
+                          <span>Estoque: {product.estoque_atual}</span>
+                          <span>{formatMoney(product.preco_venda)}</span>
+                        </div>
+                        <div className="actions-row">
+                          <button type="button" className="ghost" onClick={() => decreaseSaleItem(product.id)}>
+                            -
+                          </button>
+                          <span className="pdv-qty-chip">{getSaleItemQuantity(product.id)}</span>
+                          <button type="button" onClick={() => quickAddSaleItem(product.id)}>
+                            +
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                    {filteredSaleProducts.length === 0 && <p className="muted">Nenhum item encontrado.</p>}
+                  </div>
+                </div>
+
+                <form className="pdv-checkout" onSubmit={saveSale}>
+                  <h3>Venda atual</h3>
+
+                  <div className="pdv-cart-list">
+                    {saleSummary.lines.length === 0 && <p className="muted">Toque em um item para adicionar na venda.</p>}
+                    {saleSummary.lines.map((line) => (
+                      <article key={line.product.id} className="pdv-cart-item">
+                        <div className="pdv-cart-main">
+                          <strong>{line.product.nome}</strong>
+                          <span>{formatMoney(line.product.preco_venda)} cada</span>
+                        </div>
+                        <div className="actions-row">
+                          <button type="button" className="ghost" onClick={() => decreaseSaleItem(line.product.id)}>
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="0.001"
+                            value={saleItems.find((item) => item.product_id === line.product.id)?.quantity || ""}
+                            onChange={(event) => updateSaleItem(line.product.id, event.target.value)}
+                          />
+                          <button type="button" onClick={() => increaseSaleItem(line.product.id)}>
+                            +
+                          </button>
+                          <button type="button" className="ghost" onClick={() => removeSaleItem(line.product.id)}>
+                            Remover
+                          </button>
+                        </div>
+                        <strong className="pdv-line-total">{formatMoney(line.lineTotal)}</strong>
+                      </article>
+                    ))}
+                  </div>
+
+                  <label>
+                    Forma de pagamento
+                    <div className="pdv-payments">
+                      {PAYMENT_METHODS.map((method) => (
+                        <button
+                          key={method}
+                          type="button"
+                          className={saleForm.payment_method === method ? "pay-chip active" : "pay-chip"}
+                          onClick={() => {
+                            setPixPreview(null);
+                            setSaleForm((prev) => ({
+                              ...prev,
+                              payment_method: method,
+                              received_amount: method === "DINHEIRO" ? prev.received_amount : ""
+                            }));
+                          }}
+                        >
+                          {PAYMENT_LABELS[method]}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+
+                  {saleForm.payment_method === "PIX" && can(PERMISSIONS.SALES_REGISTER) && (
+                    <div className="pix-box">
+                      {!pixConfig.enabled && (
+                        <p className="muted">PIX desativado. Habilite em Configuracoes para gerar QR Code.</p>
+                      )}
+                      {pixConfig.enabled && !pixConfig.has_key && (
+                        <p className="muted">Configure a chave PIX em Configuracoes para liberar o QR Code.</p>
+                      )}
+                      {pixConfig.enabled && pixConfig.has_key && (
+                        <div className="stack-inner">
+                          <button type="button" className="ghost" onClick={() => void generatePixQrPreview()} disabled={pixLoading || saleSummary.total <= 0}>
+                            {pixLoading ? "Gerando QR PIX..." : "Gerar QR Code PIX"}
+                          </button>
+                          {pixPreview && (
+                            <div className="pix-preview">
+                              <img src={pixPreview.qr_code_data_url} alt="QR Code PIX" />
+                              <p>
+                                Recebedor: <strong>{pixPreview.merchant_name}</strong>
+                                {pixPreview.key_masked ? ` | Chave: ${pixPreview.key_masked}` : ""}
+                              </p>
+                              <label>
+                                Codigo PIX copia e cola
+                                <textarea readOnly rows={4} value={pixPreview.brcode} />
+                              </label>
+                              <button type="button" className="ghost" onClick={() => void copyPixCode()}>
+                                Copiar codigo PIX
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <label>
+                    Desconto (opcional)
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={saleForm.discount_amount}
+                      onChange={(event) => setSaleForm((prev) => ({ ...prev, discount_amount: event.target.value }))}
+                    />
+                  </label>
+
+                  {saleForm.payment_method === "DINHEIRO" && (
+                    <label>
+                      Valor recebido do cliente
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={saleForm.received_amount}
+                        onChange={(event) => setSaleForm((prev) => ({ ...prev, received_amount: event.target.value }))}
+                      />
+                    </label>
+                  )}
+
+                  <div className="pdv-totals">
+                    <p>
+                      <span>Subtotal</span>
+                      <strong>{formatMoney(saleSummary.subtotal)}</strong>
+                    </p>
+                    <p>
+                      <span>Desconto</span>
+                      <strong>{formatMoney(saleSummary.discount)}</strong>
+                    </p>
+                    <p className="pdv-grand-total">
+                      <span>Total</span>
+                      <strong>{formatMoney(saleSummary.total)}</strong>
+                    </p>
+                    {saleForm.payment_method === "DINHEIRO" && (
+                      <>
+                        <p>
+                          <span>Troco</span>
+                          <strong>{formatMoney(changeAmount)}</strong>
+                        </p>
+                        {missingAmount > 0 && (
+                          <p className="pdv-missing">
+                            <span>Falta receber</span>
+                            <strong>{formatMoney(missingAmount)}</strong>
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="pdv-finish-btn"
+                    disabled={!can(PERMISSIONS.SALES_REGISTER) || saleSummary.lines.length === 0}
+                  >
+                    Finalizar venda
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <div className="panel two-col">
+              <div>
+                <div className="panel-head">
+                  <h3>Log de vendas</h3>
+                  <select value={salesStatusFilter} onChange={(event) => setSalesStatusFilter(event.target.value)}>
+                    <option value="ALL">Todos</option><option value="COMPLETED">Concluidas</option><option value="CANCELED">Canceladas</option>
+                  </select>
+                </div>
+                <table><thead><tr><th>Codigo</th><th>Usuario</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>{sales.map((sale) => <tr key={sale.id}><td>{sale.sale_code}</td><td>{sale.sold_by_name || "-"}</td><td>{formatMoney(sale.total_amount)}</td><td>{sale.status}</td><td><button className="ghost" onClick={() => void loadSaleDetails(sale.id)}>Detalhar</button></td></tr>)}</tbody></table>
+              </div>
+              <div>
+                <h3>Detalhes da venda</h3>
+                {selectedSale ? (
+                  <div className="stack-inner">
+                    <p><strong>{selectedSale.sale_code}</strong> | {formatDateTime(selectedSale.created_at)}</p>
+                    <p>Forma: {PAYMENT_LABELS[selectedSale.payment_method as PaymentMethod]} | Total: {formatMoney(selectedSale.total_amount)}</p>
+                    <table><thead><tr><th>Item</th><th>Qtd.</th><th>Unit.</th><th>Total</th></tr></thead><tbody>{(selectedSale.items || []).map((item: any) => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>{formatMoney(item.unit_price)}</td><td>{formatMoney(item.line_total)}</td></tr>)}</tbody></table>
+                    {selectedSale.status === "COMPLETED" && can(PERMISSIONS.SALES_REGISTER) && <><label>Motivo do cancelamento<input value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label><button className="danger" onClick={() => void cancelSale()}>Cancelar venda</button></>}
+                    {selectedSale.status === "CANCELED" && <p className="muted">Cancelada em {formatDateTime(selectedSale.canceled_at)} | Motivo: {selectedSale.cancel_reason || "-"}</p>}
+                  </div>
+                ) : <p className="muted">Selecione uma venda no log para ver detalhes.</p>}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeSection === "stock" && (
+          <section className="stack">
+            <div className="panel">
+              <h1>Cadastro e estoque de itens</h1>
+              <form className="grid-form three" onSubmit={saveProduct}>
+                <label>
+                  Nome
+                  <input required value={productForm.nome} onChange={(event) => setProductForm((prev) => ({ ...prev, nome: event.target.value }))} />
+                </label>
+                <label>
+                  SKU
+                  <input value={productForm.sku} onChange={(event) => setProductForm((prev) => ({ ...prev, sku: event.target.value }))} />
+                </label>
+                <label>
+                  Categoria
+                  <input value={productForm.categoria} onChange={(event) => setProductForm((prev) => ({ ...prev, categoria: event.target.value }))} />
+                </label>
+                <label>
+                  Preco de venda
+                  <input type="number" min="0" step="0.01" required value={productForm.preco_venda} onChange={(event) => setProductForm((prev) => ({ ...prev, preco_venda: event.target.value }))} />
+                </label>
+                <label>
+                  Custo unitario
+                  <input type="number" min="0" step="0.01" value={productForm.custo_unitario} onChange={(event) => setProductForm((prev) => ({ ...prev, custo_unitario: event.target.value }))} />
+                </label>
+                <label>
+                  Estoque inicial
+                  <input type="number" min="0" step="0.001" disabled={productForm.id > 0} value={productForm.estoque_inicial} onChange={(event) => setProductForm((prev) => ({ ...prev, estoque_inicial: event.target.value }))} />
+                </label>
+                <label className="toggle">
+                  <input type="checkbox" checked={productForm.ativo} onChange={(event) => setProductForm((prev) => ({ ...prev, ativo: event.target.checked }))} />
+                  Produto ativo
+                </label>
+                <div className="actions-row">
+                  <button type="submit" disabled={!can(PERMISSIONS.STOCK_MANAGE)}>{productForm.id > 0 ? "Salvar produto" : "Cadastrar produto"}</button>
+                  <button type="button" className="ghost" onClick={() => setProductForm({ id: 0, nome: "", sku: "", categoria: "", preco_venda: "0", custo_unitario: "0", estoque_inicial: "0", ativo: true })}>Limpar</button>
+                </div>
+              </form>
+            </div>
+            <div className="panel two-col">
+              <div className="stack-inner">
+                <div className="summary-card">
+                  <h3>Ajuste manual de estoque</h3>
+                  <form className="grid-form" onSubmit={adjustStock}>
+                    <label>
+                      Produto
+                      <select value={stockAdjust.productId} onChange={(event) => setStockAdjust((prev) => ({ ...prev, productId: Number(event.target.value || 0) }))}>
+                        <option value={0}>Selecione...</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.nome} | estoque {product.estoque_atual}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Quantidade (use negativo para saida)
+                      <input type="number" step="0.001" required value={stockAdjust.quantity_delta} onChange={(event) => setStockAdjust((prev) => ({ ...prev, quantity_delta: event.target.value }))} />
+                    </label>
+                    <label>
+                      Motivo
+                      <input value={stockAdjust.note} onChange={(event) => setStockAdjust((prev) => ({ ...prev, note: event.target.value }))} />
+                    </label>
+                    <button type="submit" disabled={!can(PERMISSIONS.STOCK_MANAGE)}>Aplicar ajuste</button>
+                  </form>
+                </div>
+
+                <div className="summary-card">
+                  <h3>Reposicao de estoque</h3>
+                  <form className="grid-form" onSubmit={restockProduct}>
+                    <label>
+                      Produto
+                      <select value={stockRestock.productId} onChange={(event) => setStockRestock((prev) => ({ ...prev, productId: Number(event.target.value || 0) }))}>
+                        <option value={0}>Selecione...</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.nome} | estoque {product.estoque_atual}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Quantidade de reposicao
+                      <input type="number" min="0.001" step="0.001" required value={stockRestock.quantity} onChange={(event) => setStockRestock((prev) => ({ ...prev, quantity: event.target.value }))} />
+                    </label>
+                    <label>
+                      Observacao
+                      <input value={stockRestock.note} onChange={(event) => setStockRestock((prev) => ({ ...prev, note: event.target.value }))} />
+                    </label>
+                    <button type="submit" disabled={!can(PERMISSIONS.STOCK_MANAGE)}>Aplicar reposicao</button>
+                  </form>
+                </div>
+
+                <h3 style={{ marginTop: 16 }}>Movimentacao selecionada</h3>
+                {productMovements.length > 0 ? (
+                  <table>
+                    <thead>
+                      <tr><th>Data</th><th>Tipo</th><th>Qtd.</th><th>Usuario</th></tr>
+                    </thead>
+                    <tbody>
+                      {productMovements.map((movement) => (
+                        <tr key={movement.id}>
+                          <td>{formatDateTime(movement.created_at)}</td>
+                          <td>{movement.type}</td>
+                          <td>{movement.quantity_delta}</td>
+                          <td>{movement.user?.nome || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="muted">Clique em “Movimentos” na tabela de produtos.</p>
+                )}
+              </div>
+              <div>
+                <h3>Produtos cadastrados</h3>
+                <table>
+                  <thead><tr><th>Nome</th><th>Preco</th><th>Estoque</th><th>Acoes</th></tr></thead>
+                  <tbody>
+                    {products.map((product) => (
+                      <tr key={product.id}>
+                        <td>{product.nome}{!product.ativo && <span className="chip">Inativo</span>}</td>
+                        <td>{formatMoney(product.preco_venda)}</td>
+                        <td>{product.estoque_atual}</td>
+                        <td>
+                          <div className="actions-row">
+                            <button className="ghost" onClick={() => editProduct(product)}>Editar</button>
+                            <button className="ghost" onClick={() => void showProductMovements(product.id)}>Movimentos</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeSection === "reports" && (
+          <section className="stack">
+            <div className="panel">
+              <div className="panel-head">
+                <h1>Relatorios totalizadores</h1>
+                <div className="actions-row">
+                  <input type="date" value={reportRange.startDate} onChange={(event) => setReportRange((prev) => ({ ...prev, startDate: event.target.value }))} />
+                  <input type="date" value={reportRange.endDate} onChange={(event) => setReportRange((prev) => ({ ...prev, endDate: event.target.value }))} />
+                  <button className="ghost" onClick={() => void loadReports().catch((err) => setError(parseError(err)))}>Gerar</button>
+                </div>
+              </div>
+
+              {reportGeneral && (
+                <div className="stats-grid">
+                  <article className="stat-card"><span>Vendas</span><strong>{reportGeneral.sales_count}</strong></article>
+                  <article className="stat-card"><span>Subtotal</span><strong>{formatMoney(reportGeneral.subtotal)}</strong></article>
+                  <article className="stat-card"><span>Desconto</span><strong>{formatMoney(reportGeneral.discount)}</strong></article>
+                  <article className="stat-card"><span>Total geral</span><strong>{formatMoney(reportGeneral.total)}</strong></article>
+                </div>
+              )}
+            </div>
+
+            <div className="panel two-col">
+              <div>
+                <h3>Por periodo selecionado</h3>
+                {reportPeriod ? (
+                  <table>
+                    <thead><tr><th>Periodo</th><th>Vendas</th><th>Entrada bruta</th><th>Descontos</th><th>Entrada liquida</th></tr></thead>
+                    <tbody>
+                      <tr>
+                        <td>{reportPeriod.startDate} ate {reportPeriod.endDate}</td>
+                        <td>{reportPeriod.sales_count}</td>
+                        <td>{formatMoney(reportPeriod.subtotal)}</td>
+                        <td>{formatMoney(reportPeriod.discount)}</td>
+                        <td>{formatMoney(reportPeriod.total)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="muted">Selecione um periodo e clique em Gerar.</p>
+                )}
+                <p className="muted">Este total considera apenas entradas de vendas concluidas, sem valor de abertura do caixa.</p>
+              </div>
+              <div>
+                <h3>Por usuario</h3>
+                <table><thead><tr><th>Usuario</th><th>Vendas</th><th>Total</th></tr></thead><tbody>{reportByUser.map((item) => <tr key={`${item.user_id || "none"}-${item.user_name}`}><td>{item.user_name}</td><td>{item.sales_count}</td><td>{formatMoney(item.total)}</td></tr>)}</tbody></table>
+                <h3 style={{ marginTop: 16 }}>Por item</h3>
+                <table><thead><tr><th>Item</th><th>Qtd.</th><th>Total</th></tr></thead><tbody>{reportByItem.map((item) => <tr key={`${item.product_id}-${item.product_name}`}><td>{item.product_name}</td><td>{item.quantity}</td><td>{formatMoney(item.total)}</td></tr>)}</tbody></table>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeSection === "users" && (
+          <section className="stack">
+            <div className="panel">
+              <h1>Multiplus usuarios</h1>
+              <form className="grid-form three" onSubmit={saveUser}>
+                <label>Nome<input required value={userForm.nome} onChange={(event) => setUserForm((prev) => ({ ...prev, nome: event.target.value }))} /></label>
+                <label>E-mail<input type="email" required value={userForm.email} onChange={(event) => setUserForm((prev) => ({ ...prev, email: event.target.value }))} /></label>
+                <label>
+                  Perfil
+                  <select value={userForm.permissao} onChange={(event) => setUserForm((prev) => ({ ...prev, permissao: event.target.value as RoleType }))}>
+                    {availableRoles.map((role) => (
+                      <option key={role} value={role}>{ROLE_LABELS[role] || role}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>Senha {userForm.id > 0 ? "(opcional)" : ""}<input type="password" value={userForm.senha} onChange={(event) => setUserForm((prev) => ({ ...prev, senha: event.target.value }))} /></label>
+                <label className="toggle"><input type="checkbox" checked={userForm.ativo} onChange={(event) => setUserForm((prev) => ({ ...prev, ativo: event.target.checked }))} />Usuario ativo</label>
+                <div className="full permission-editor">
+                  <h3>Permissoes por funcionalidade</h3>
+                  <p className="muted">Marque apenas o necessario para este usuario.</p>
+                  <div className="permission-grid">
+                    {permissionsCatalog.map((permissionKey) => {
+                      const meta = permissionUiLabel(permissionKey);
+                      const checked = Boolean(userForm.permissions?.[permissionKey]);
+                      return (
+                        <label key={permissionKey} className="permission-card">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!can(PERMISSIONS.USERS_MANAGE)}
+                            onChange={(event) => setUserPermission(permissionKey, event.target.checked)}
+                          />
+                          <div className="permission-card-content">
+                            <strong>{meta.label}</strong>
+                            <span>{meta.description}</span>
+                            <code>{permissionKey}</code>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="actions-row"><button type="submit" disabled={!can(PERMISSIONS.USERS_MANAGE)}>{userForm.id > 0 ? "Salvar" : "Criar"}</button><button type="button" className="ghost" onClick={() => setUserForm({ id: 0, nome: "", email: "", senha: "", permissao: "EDITOR", ativo: true, permissions: {} })}>Limpar</button></div>
+              </form>
+            </div>
+            <div className="panel">
+              <table>
+                <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ultimo login</th><th>Acoes</th></tr></thead>
                 <tbody>
-                  {diagnostics.cargos.map((cargo) => (
-                    <tr key={cargo.cargo}>
-                      <td>{cargo.cargo}</td>
-                      <td>{cargo.mode}</td>
-                      <td>{cargo.memberRows}</td>
-                      <td>{cargo.registrosPrevistos}</td>
-                      <td>{cargo.casaisPrevistos}</td>
-                      <td>{cargo.individuaisPrevistos}</td>
-                      <td>{cargo.sobrasCasal}</td>
+                  {users.map((user) => (
+                    <tr key={user.id}>
+                      <td>{user.nome}{!user.ativo && <span className="chip">Inativo</span>}</td>
+                      <td>{user.email}</td>
+                      <td>{ROLE_LABELS[user.permissao as RoleType] || user.permissao}</td>
+                      <td>{formatDateTime(user.last_login_at)}</td>
+                      <td>
+                        <div className="actions-row">
+                          <button className="ghost" onClick={() => setUserForm({ id: user.id, nome: user.nome, email: user.email, senha: "", permissao: user.permissao, ativo: user.ativo, permissions: user.permissions || {} })}>Editar</button>
+                          <button className="danger" disabled={!can(PERMISSIONS.USERS_MANAGE) || user.id === currentUser.id} onClick={() => void deleteUser(user.id)}>Excluir</button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AccessDeniedScreen() {
-  return (
-    <div className="panel">
-      <h2>Acesso negado</h2>
-      <p className="muted">Você não possui permissão para visualizar esta funcionalidade.</p>
-    </div>
-  );
-}
-
-function DashboardScreen({ shell, actions }: { shell: any; actions: any }) {
-  const [filterEncounterId, setFilterEncounterId] = useState<number | null>(null);
-
-  useEffect(() => {
-    actions.refreshDashboard(filterEncounterId || undefined);
-  }, [filterEncounterId]);
-
-  return (
-    <section className="page-stack">
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Dashboard</h2>
-          <div className="actions-row">
-            <select
-              value={filterEncounterId || ""}
-              onChange={(event) => setFilterEncounterId(event.target.value ? Number(event.target.value) : null)}
-            >
-              <option value="">Todos os encontros</option>
-              {shell.encounters.map((encounter: Encounter) => (
-                <option key={encounter.id} value={encounter.id}>
-                  {displayEncounterName(encounter)}
-                </option>
-              ))}
-            </select>
-            <HelpButton onClick={() => actions.openHelp("DASHBOARD")} label="Ajuda do dashboard" />
-          </div>
-        </div>
-        <div className="stats-grid">
-          <article className="stat-card"><span>Encontros</span><strong>{shell.dashboard.encontros}</strong></article>
-          <article className="stat-card"><span>Equipes</span><strong>{shell.dashboard.equipes}</strong></article>
-          <article className="stat-card"><span>Círculos</span><strong>{shell.dashboard.circulos}</strong></article>
-          <article className="stat-card"><span>Capas/Cartazes</span><strong>{shell.dashboard.capasCartazes}</strong></article>
-          <article className="stat-card"><span>Membros</span><strong>{shell.dashboard.membros}</strong></article>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
-  type SettingsTab = "USERS" | "PDF_TITLE" | "AUDIT";
-  const canManageUsers = shell.can(PERMISSIONS.USERS_MANAGE);
-  const [tab, setTab] = useState<SettingsTab>("USERS");
-  const auditActions = ["CREATE", "UPDATE", "DELETE", "UPLOAD", "IMPORT"];
-  const resourceTypes = [
-    "ENCONTRO",
-    "EQUIPE",
-    "CIRCULO",
-    "MEMBRO",
-    "ASSET",
-    "USUARIO",
-    "MEMBROS",
-    "CIRCULOS",
-    "SETTINGS_PDF_TITLE",
-    "SETTINGS_PDF_TITLE_FONT",
-    "EQUIPE_TITULO_ARTE",
-    "MEMBRO_FOTO",
-    "MEMBROS_VALIDACAO"
-  ];
-
-  const auditPageSize = Number(shell.auditFilters?.limit || 50);
-  const auditCurrentPage = Math.floor(Number(shell.auditOffset || 0) / auditPageSize) + 1;
-  const auditTotalPages = Math.max(1, Math.ceil(Number(shell.auditTotal || 0) / auditPageSize));
-
-  useEffect(() => {
-    actions.refreshUsers();
-    actions.refreshPdfTitleSettings();
-    actions.refreshAuditLogs({ ...DEFAULT_AUDIT_FILTERS }, 0);
-  }, []);
-
-  return (
-    <section className="page-stack">
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Configurações</h2>
-          <HelpButton
-            onClick={() =>
-              actions.openHelp(tab === "USERS" ? "SETTINGS_USERS" : tab === "PDF_TITLE" ? "SETTINGS_PDF" : "SETTINGS_AUDIT")
-            }
-            label="Ajuda de configurações"
-          />
-        </div>
-        <div className="settings-tabs">
-          <button
-            className={`settings-tab ${tab === "USERS" ? "active" : ""}`.trim()}
-            onClick={() => setTab("USERS")}
-            type="button"
-          >
-            Usuários
-          </button>
-          <button
-            className={`settings-tab ${tab === "PDF_TITLE" ? "active" : ""}`.trim()}
-            onClick={() => setTab("PDF_TITLE")}
-            type="button"
-          >
-            Título PDF
-          </button>
-          <button
-            className={`settings-tab ${tab === "AUDIT" ? "active" : ""}`.trim()}
-            onClick={() => setTab("AUDIT")}
-            type="button"
-          >
-            Auditoria
-          </button>
-        </div>
-      </div>
-
-      {tab === "USERS" && (
-        <>
-          <div className="panel">
-            <h2>Configuração de usuários</h2>
-            <form className="grid-form two" onSubmit={actions.handleSaveUser}>
-              <label>
-                Nome
-                <input
-                  required
-                  disabled={!canManageUsers}
-                  value={shell.userForm.nome}
-                  onChange={(event) => actions.setUserForm((prev: any) => ({ ...prev, nome: event.target.value }))}
-                />
-              </label>
-              <label>
-                E-mail
-                <input
-                  required
-                  type="email"
-                  disabled={!canManageUsers}
-                  value={shell.userForm.email}
-                  onChange={(event) => actions.setUserForm((prev: any) => ({ ...prev, email: event.target.value }))}
-                />
-              </label>
-              <label>
-                Senha
-                <input
-                  type="password"
-                  disabled={!canManageUsers}
-                  placeholder={shell.userForm.id > 0 ? "Opcional para alterar" : "Mínimo 8 caracteres"}
-                  value={shell.userForm.senha}
-                  onChange={(event) => actions.setUserForm((prev: any) => ({ ...prev, senha: event.target.value }))}
-                />
-              </label>
-              <label>
-                Permissão
-                <select
-                  disabled={!canManageUsers}
-                  value={shell.userForm.permissao}
-                  onChange={(event) => actions.updateUserRole(event.target.value as RoleType)}
-                >
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="EDITOR">EDITOR</option>
-                  <option value="VISUALIZADOR">VISUALIZADOR</option>
-                </select>
-              </label>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  disabled={!canManageUsers}
-                  checked={shell.userForm.ativo}
-                  onChange={(event) => actions.setUserForm((prev: any) => ({ ...prev, ativo: event.target.checked }))}
-                />
-                Usuário ativo
-              </label>
-              <div className="actions-row">
-                <button type="submit" disabled={!canManageUsers}>
-                  {shell.userForm.id > 0 ? "Salvar edição" : "Criar usuário"}
-                </button>
-                <button className="ghost" type="button" onClick={() => actions.resetUserForm()} disabled={!canManageUsers}>
-                  Limpar
-                </button>
-              </div>
-              <div className="permissions-box">
-                <h3>Permissões por funcionalidade</h3>
-                <div className="permissions-grid">
-                  {shell.permissionsCatalog.map((key: string) => (
-                    <label key={key} className="toggle permission-toggle">
-                      <input
-                        type="checkbox"
-                        disabled={!canManageUsers}
-                        checked={Boolean(shell.userForm.permissions?.[key])}
-                        onChange={(event) => actions.toggleUserPermission(key, event.target.checked)}
-                      />
-                      {key}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </form>
-          </div>
-
-          <div className="panel">
-            <h2>Usuários cadastrados</h2>
-            <div className="entity-list">
-              {shell.users.map((user: AppUser) => (
-                <article key={user.id} className="entity-card">
-                  <div>
-                    <h3>{user.nome}</h3>
-                    <p>{user.email}</p>
-                    <span className="chip">{user.permissao}</span>
-                    {!user.ativo && <span className="chip danger">Inativo</span>}
-                    <p className="muted">
-                      Último login: {user.last_login_at ? formatDate(user.last_login_at) : "nunca"}
-                    </p>
-                  </div>
-                  <div className="actions-row">
-                    <button className="ghost" onClick={() => actions.handleEditUser(user)} disabled={!canManageUsers}>
-                      Editar
-                    </button>
-                    <button className="danger-btn" onClick={() => actions.handleDeleteUser(user.id)} disabled={!canManageUsers}>
-                      Excluir
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {tab === "PDF_TITLE" && (
-        <div className="panel">
-          <h2>Título das equipes no PDF</h2>
-          <form className="grid-form" onSubmit={actions.handleSavePdfTitleMode}>
-            <label className="toggle">
-              <input
-                type="radio"
-                name="pdf-title-mode"
-                disabled={!canManageUsers}
-                checked={shell.pdfTitleSettings.mode === "SYSTEM_FONT"}
-                onChange={() =>
-                  actions.setPdfTitleSettings((prev: PdfTitleSettings) => ({ ...prev, mode: "SYSTEM_FONT" }))
-                }
-              />
-              Fonte padrão do sistema
-            </label>
-            <label className="toggle">
-              <input
-                type="radio"
-                name="pdf-title-mode"
-                disabled={!canManageUsers}
-                checked={shell.pdfTitleSettings.mode === "CUSTOM_FONT"}
-                onChange={() =>
-                  actions.setPdfTitleSettings((prev: PdfTitleSettings) => ({ ...prev, mode: "CUSTOM_FONT" }))
-                }
-              />
-              Enviar fonte personalizada
-            </label>
-            <label className="toggle">
-              <input
-                type="radio"
-                name="pdf-title-mode"
-                disabled={!canManageUsers}
-                checked={shell.pdfTitleSettings.mode === "TEAM_ART"}
-                onChange={() =>
-                  actions.setPdfTitleSettings((prev: PdfTitleSettings) => ({ ...prev, mode: "TEAM_ART" }))
-                }
-              />
-              Usar arte por equipe
-            </label>
-
-            {shell.pdfTitleSettings.mode === "CUSTOM_FONT" && (
-              <label className="file-field">
-                Arquivo de fonte (.ttf, .otf, .woff, .woff2)
-                <input
-                  type="file"
-                  accept=".ttf,.otf,.woff,.woff2"
-                  disabled={!canManageUsers}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    event.target.value = "";
-                    actions.handleUploadPdfTitleFont(file);
-                  }}
-                />
-              </label>
-            )}
-
-            <p className="muted">
-              {shell.pdfTitleSettings.mode === "TEAM_ART"
-                ? "Modo ativo: cada equipe pode receber uma arte para o título na tela da equipe."
-                : shell.pdfTitleSettings.font_url
-                  ? `Fonte atual: ${shell.pdfTitleSettings.font_url}`
-                  : "Nenhuma fonte personalizada cadastrada."}
-            </p>
-
-            <div className="actions-row">
-              <button type="submit" disabled={!canManageUsers}>Salvar modo</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {tab === "AUDIT" && (
-        <>
-          <div className="panel">
-            <h2>Log de auditoria</h2>
-            <form
-              className="grid-form two"
-              onSubmit={(event) => {
-                event.preventDefault();
-                actions.refreshAuditLogs(shell.auditFilters, 0);
-              }}
-            >
-              <label>
-                Encontro
-                <select
-                  value={shell.auditFilters.encounterId || ""}
-                  onChange={(event) =>
-                    actions.setAuditFilters((prev: AuditFilters) => ({
-                      ...prev,
-                      encounterId: event.target.value ? Number(event.target.value) : null
-                    }))
-                  }
-                >
-                  <option value="">Todos</option>
-                  {shell.encounters.map((encounter: Encounter) => (
-                    <option key={encounter.id} value={encounter.id}>
-                      {displayEncounterName(encounter)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Usuário
-                <select
-                  value={shell.auditFilters.userId || ""}
-                  onChange={(event) =>
-                    actions.setAuditFilters((prev: AuditFilters) => ({
-                      ...prev,
-                      userId: event.target.value ? Number(event.target.value) : null
-                    }))
-                  }
-                >
-                  <option value="">Todos</option>
-                  {shell.users.map((user: AppUser) => (
-                    <option key={user.id} value={user.id}>
-                      {user.nome} ({user.email})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Ação
-                <select
-                  value={shell.auditFilters.action}
-                  onChange={(event) =>
-                    actions.setAuditFilters((prev: AuditFilters) => ({
-                      ...prev,
-                      action: event.target.value
-                    }))
-                  }
-                >
-                  <option value="">Todas</option>
-                  {auditActions.map((action) => (
-                    <option key={action} value={action}>
-                      {action}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Recurso
-                <select
-                  value={shell.auditFilters.resourceType}
-                  onChange={(event) =>
-                    actions.setAuditFilters((prev: AuditFilters) => ({
-                      ...prev,
-                      resourceType: event.target.value
-                    }))
-                  }
-                >
-                  <option value="">Todos</option>
-                  {resourceTypes.map((resourceType) => (
-                    <option key={resourceType} value={resourceType}>
-                      {resourceType}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Itens por página
-                <select
-                  value={shell.auditFilters.limit}
-                  onChange={(event) =>
-                    actions.setAuditFilters((prev: AuditFilters) => ({
-                      ...prev,
-                      limit: Number(event.target.value || "50")
-                    }))
-                  }
-                >
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                  <option value="200">200</option>
-                </select>
-              </label>
-              <div className="actions-row">
-                <button type="submit">Aplicar filtros</button>
-                <button
-                  className="ghost"
-                  type="button"
-                  onClick={() => {
-                    actions.setAuditFilters({ ...DEFAULT_AUDIT_FILTERS });
-                    actions.refreshAuditLogs({ ...DEFAULT_AUDIT_FILTERS }, 0);
-                  }}
-                >
-                  Limpar
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="panel">
-            <div className="audit-pagination">
-              <p className="muted">
-                Total: {shell.auditTotal} registro(s) | Página {auditCurrentPage} de {auditTotalPages}
-              </p>
-              <div className="actions-row">
-                <button
-                  className="ghost"
-                  disabled={shell.auditOffset <= 0 || shell.auditLoading}
-                  onClick={() => actions.refreshAuditLogs(shell.auditFilters, Math.max(0, shell.auditOffset - auditPageSize))}
-                >
-                  Anterior
-                </button>
-                <button
-                  className="ghost"
-                  disabled={shell.auditOffset + auditPageSize >= shell.auditTotal || shell.auditLoading}
-                  onClick={() => actions.refreshAuditLogs(shell.auditFilters, shell.auditOffset + auditPageSize)}
-                >
-                  Próxima
-                </button>
-              </div>
-            </div>
-
-            {shell.auditLoading && <p className="muted">Carregando auditoria...</p>}
-
-            <div className="entity-list">
-              {shell.auditLogs.map((log: AuditLogEntry) => (
-                <article key={log.id} className="entity-card audit-card">
-                  <div className="audit-head">
-                    <div>
-                      <h3>{log.summary || `${log.action} ${log.resource_type}`}</h3>
-                      <p className="muted">{formatDateTime(log.created_at)}</p>
-                    </div>
-                    <div className="audit-meta">
-                      <span className="chip">{log.action}</span>
-                      <span className="chip">{log.resource_type}</span>
-                      {log.resource_id && <span className="chip">ID {log.resource_id}</span>}
-                    </div>
-                  </div>
-                  <p className="muted">
-                    Usuário: {log.user_nome || log.user_email || "Sistema"} | Encontro: {log.encontro_nome || "N/A"}
-                  </p>
-                  <details className="audit-details">
-                    <summary>Detalhes técnicos</summary>
-                    <pre>{JSON.stringify(log.details || {}, null, 2)}</pre>
-                  </details>
-                </article>
-              ))}
-            </div>
-
-            {!shell.auditLoading && shell.auditLogs.length === 0 && (
-              <p className="muted">Nenhum registro de auditoria para os filtros atuais.</p>
-            )}
-          </div>
-        </>
-      )}
-    </section>
-  );
-}
-
-function EncountersScreen({ shell, actions }: { shell: any; actions: any }) {
-  const navigate = useNavigate();
-  const canManage = shell.can(PERMISSIONS.ENCOUNTERS_MANAGE);
-  const canGeneratePdf = shell.can(PERMISSIONS.PDF_GENERATE);
-
-  return (
-    <section className="page-stack">
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Novo encontro</h2>
-          <HelpButton onClick={() => actions.openHelp("ENCOUNTERS")} label="Ajuda de encontros" />
-        </div>
-        <form className="grid-form three" onSubmit={actions.handleCreateEncounter}>
-          <label>
-            Nome do encontro
-            <input
-              required
-              disabled={!canManage}
-              value={shell.encounterForm.nome}
-              onChange={(event) => actions.setEncounterForm((prev: any) => ({ ...prev, nome: event.target.value }))}
-            />
-          </label>
-          <label>
-            Data de início
-            <input
-              required
-              type="date"
-              disabled={!canManage}
-              value={shell.encounterForm.dataInicio}
-              onChange={(event) => actions.setEncounterForm((prev: any) => ({ ...prev, dataInicio: event.target.value }))}
-            />
-          </label>
-          <label>
-            Data de fim
-            <input
-              required
-              type="date"
-              disabled={!canManage}
-              value={shell.encounterForm.dataFim}
-              onChange={(event) => actions.setEncounterForm((prev: any) => ({ ...prev, dataFim: event.target.value }))}
-            />
-          </label>
-          <button type="submit" disabled={!canManage}>Cadastrar encontro</button>
-        </form>
-      </div>
-
-      <div className="panel">
-        <h2>Encontros</h2>
-        <div className="cards-grid">
-          {shell.encounters.map((encounter: Encounter) => (
-            <article
-              key={encounter.id}
-              className="main-card clickable"
-              onClick={() => navigate(`/encounters/${encounter.id}`)}
-            >
-              <h3>{displayEncounterName(encounter)}</h3>
-              <p>
-                {formatDate(encounter.data_inicio || encounter.data_encontro)} até{" "}
-                {formatDate(encounter.data_fim || encounter.data_encontro)}
-              </p>
-              <div className="actions-row">
-                <Link
-                  className="as-btn"
-                  to={`/encounters/${encounter.id}`}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  Abrir gestão
-                </Link>
-                <button
-                  disabled={!canGeneratePdf}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    actions.handlePreviewEncounterPdf(encounter.id);
-                  }}
-                >
-                  Quadrante
-                </button>
-                <button
-                  className="danger-btn"
-                  disabled={!canManage}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    actions.handleDeleteEncounter(encounter.id);
-                  }}
-                >
-                  Excluir
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function EncounterHubScreen({ shell, actions }: { shell: any; actions: any }) {
-  const params = useParams();
-  const encounterId = parseNumericParam(params.encounterId);
-  const navigate = useNavigate();
-  const encounter = shell.encounters.find((item: Encounter) => sameId(item.id, encounterId));
-  const canTeams = shell.can(PERMISSIONS.TEAMS_VIEW);
-  const canAssets = shell.can(PERMISSIONS.ASSETS_VIEW);
-
-  useEffect(() => {
-    if (encounterId) actions.refreshDashboard(encounterId);
-  }, [encounterId]);
-
-  if (!encounterId) return <Navigate to="/encounters" replace />;
-  if (!encounter) return <div className="panel"><p>Encontro não encontrado.</p></div>;
-
-  return (
-    <section className="page-stack">
-      <div className="panel">
-        <div className="panel-head">
-          <h2>{displayEncounterName(encounter)}</h2>
-          <div className="actions-row">
-            <HelpButton onClick={() => actions.openHelp("ENCOUNTER_HUB")} label="Ajuda da gestão do encontro" />
-            <Link className="as-btn" to="/encounters">Voltar</Link>
-          </div>
-        </div>
-        <div className="cards-grid">
-          {canTeams && (
-            <article className="main-card clickable" onClick={() => navigate(`/encounters/${encounterId}/teams`)}>
-              <h3>Equipes</h3>
-              <p>Gerencie equipes de trabalho em telas dedicadas.</p>
-            </article>
-          )}
-          {canTeams && (
-            <article className="main-card clickable" onClick={() => navigate(`/encounters/${encounterId}/circles`)}>
-              <h3>Círculos</h3>
-              <p>Gerencie círculos e seus dados de liderança.</p>
-            </article>
-          )}
-          {canAssets && (
-            <article className="main-card clickable" onClick={() => navigate(`/encounters/${encounterId}/assets`)}>
-              <h3>Capas e separadores</h3>
-              <p>Envie artes A4 para capa, contra capa e separadores.</p>
-            </article>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function TeamListScreen({
-  type,
-  title,
-  shell,
-  actions
-}: {
-  type: TeamType;
-  title: string;
-  shell: any;
-  actions: any;
-}) {
-  const params = useParams();
-  const encounterId = parseNumericParam(params.encounterId);
-  const navigate = useNavigate();
-  const isCircle = type === "CIRCULO";
-  const canManageTeams = shell.can(PERMISSIONS.TEAMS_MANAGE);
-  const canImportCircles = shell.can(PERMISSIONS.CIRCLES_IMPORT);
-
-  useEffect(() => {
-    if (encounterId) {
-      actions.refreshTeamList(encounterId, type);
-      actions.setTeamForm(EMPTY_TEAM_FORM);
-    }
-  }, [encounterId, type]);
-
-  if (!encounterId) return <Navigate to="/encounters" replace />;
-  const encounter = shell.encounters.find((item: Encounter) => sameId(item.id, encounterId));
-  if (!encounter) return <div className="panel"><p>Encontro não encontrado.</p></div>;
-
-  return (
-    <section className="page-stack">
-      {isCircle && (
-        <div className="panel">
-          <div className="panel-head">
-            <h2>Importação geral de círculos</h2>
-            <HelpButton onClick={() => actions.openHelp("CIRCLE_LIST")} label="Ajuda de círculos" />
-          </div>
-          <p className="muted">Importe um único arquivo para criar/atualizar todos os círculos deste encontro.</p>
-          <div className="actions-row">
-            <label className="file-field">
-              Arquivo
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                disabled={!canImportCircles}
-                onChange={(event) => actions.setCircleImportFile(event.target.files?.[0] || null)}
-              />
-            </label>
-            <button
-              disabled={!shell.circleImportFile || !canImportCircles}
-              onClick={() => actions.handleImportCircles(encounterId)}
-            >
-              Importar todos os círculos
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="panel two-col">
-        <div>
-          <div className="panel-head">
-            <h2>{shell.teamForm.id > 0 ? `Editar ${title}` : `Novo ${title}`}</h2>
-            {!isCircle && <HelpButton onClick={() => actions.openHelp("TEAM_LIST")} label="Ajuda de equipes" />}
-          </div>
-          <form className="grid-form" onSubmit={(event) => actions.handleSaveTeam(encounterId, type, event)}>
-            <label>
-              Nome
-              <input
-                required
-                disabled={!canManageTeams}
-                value={shell.teamForm.nome}
-                onChange={(event) => actions.setTeamForm((prev: TeamFormState) => ({ ...prev, nome: event.target.value }))}
-              />
-            </label>
-            <label>
-              Ordem de impressão
-              <input
-                type="number"
-                disabled={!canManageTeams}
-                value={shell.teamForm.ordem}
-                onChange={(event) =>
-                  actions.setTeamForm((prev: TeamFormState) => ({ ...prev, ordem: Number(event.target.value || "0") }))
-                }
-              />
-            </label>
-            {isCircle && (
-              <>
-                <label>
-                  Cor
-                  <input
-                    type="color"
-                    disabled={!canManageTeams}
-                    value={shell.teamForm.corHex}
-                    onChange={(event) => actions.setTeamForm((prev: TeamFormState) => ({ ...prev, corHex: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  Slogan
-                  <input
-                    disabled={!canManageTeams}
-                    value={shell.teamForm.slogan}
-                    onChange={(event) => actions.setTeamForm((prev: TeamFormState) => ({ ...prev, slogan: event.target.value }))}
-                  />
-                </label>
-              </>
-            )}
-            <div className="actions-row">
-              <button type="submit" disabled={!canManageTeams}>{shell.teamForm.id > 0 ? "Salvar edição" : "Criar"}</button>
-              <button className="ghost" type="button" disabled={!canManageTeams} onClick={() => actions.setTeamForm(EMPTY_TEAM_FORM)}>
-                Limpar
-              </button>
-            </div>
-          </form>
-        </div>
-
-        <div>
-          <h2>{title}s cadastrados</h2>
-          <div className="entity-list">
-            {shell.teams.map((team: Team) => (
-              <article key={team.id} className="entity-card">
-                <div>
-                  <h3>{team.nome}</h3>
-                  <p>Ordem {team.ordem}</p>
-                  {team.cor_hex && <span className="chip">{team.cor_hex}</span>}
-                  {team.slogan && <p className="muted">{team.slogan}</p>}
-                </div>
-                <div className="actions-row">
-                  <button
-                    className="ghost"
-                    disabled={!canManageTeams}
-                    onClick={() =>
-                      actions.setTeamForm({
-                        id: team.id,
-                        nome: team.nome,
-                        ordem: team.ordem,
-                        corHex: team.cor_hex || "#8fbc8f",
-                        slogan: team.slogan || ""
-                      })
-                    }
-                  >
-                    Editar
-                  </button>
-                  <button
-                    className="ghost"
-                    onClick={() =>
-                      navigate(
-                        type === "CIRCULO"
-                          ? `/encounters/${encounterId}/circles/${team.id}`
-                          : `/encounters/${encounterId}/teams/${team.id}`
-                      )
-                    }
-                  >
-                    Abrir
-                  </button>
-                  <button
-                    className="danger-btn"
-                    disabled={!canManageTeams}
-                    onClick={() => actions.handleDeleteTeam(encounterId, team.id, type)}
-                  >
-                    Excluir
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-head">
-          <h2>{displayEncounterName(encounter)}</h2>
-          <Link className="as-btn" to={`/encounters/${encounterId}`}>Voltar ao encontro</Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function TeamDetailScreen({
-  type,
-  title,
-  shell,
-  actions
-}: {
-  type: TeamType;
-  title: string;
-  shell: any;
-  actions: any;
-}) {
-  const params = useParams();
-  const encounterId = parseNumericParam(params.encounterId);
-  const teamId = parseNumericParam(params.teamId);
-  const isCircle = type === "CIRCULO";
-  const parentPath = isCircle ? "circles" : "teams";
-  const canManageTeams = shell.can(PERMISSIONS.TEAMS_MANAGE);
-  const canImportMembers = shell.can(PERMISSIONS.IMPORTS_RUN);
-  const canManageMembers = shell.can(PERMISSIONS.MEMBERS_MANAGE);
-  const canGeneratePdf = shell.can(PERMISSIONS.PDF_GENERATE);
-  const showCircleMemberPhotos = isCircle;
-
-  useEffect(() => {
-    if (encounterId) actions.refreshTeamList(encounterId, type);
-  }, [encounterId, type]);
-
-  useEffect(() => {
-    if (encounterId && teamId) actions.refreshMembers(encounterId, teamId);
-  }, [encounterId, teamId]);
-
-  useEffect(() => {
-    actions.clearImportValidation();
-  }, [teamId]);
-
-  const team = shell.teams.find((item: Team) => sameId(item.id, teamId)) || null;
-  const groupedMembers = useMemo(() => groupMembersByCargo(shell.members), [shell.members]);
-
-  if (!encounterId || !teamId) return <Navigate to="/encounters" replace />;
-  if (!team) return <div className="panel"><p>Carregando {title.toLowerCase()}...</p></div>;
-
-  return (
-    <section className="page-stack">
-      <div className="panel">
-        <div className="panel-head">
-          <h2>{title}: {team.nome}</h2>
-          <div className="actions-row">
-            <HelpButton
-              onClick={() => actions.openHelp(isCircle ? "CIRCLE_DETAIL" : "TEAM_DETAIL")}
-              label={isCircle ? "Ajuda do círculo" : "Ajuda da equipe"}
-            />
-            <Link className="as-btn" to={`/encounters/${encounterId}/${parentPath}`}>Voltar</Link>
-            <button disabled={!canGeneratePdf} onClick={() => actions.handlePreviewTeamPdf(team.id)}>
-              Visualizar quadrante da equipe
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="panel two-col">
-        <div>
-          <h3>{isCircle ? "Cartaz do círculo" : `Foto da ${title.toLowerCase()}`}</h3>
-          {team.foto_url ? (
-            <img className={isCircle ? "poster-thumb" : "thumb"} src={mediaUrl(team.foto_url)} alt={team.nome} />
-          ) : (
-            <p className="muted">{isCircle ? "Nenhum cartaz enviado." : "Nenhuma foto enviada."}</p>
-          )}
-          <label className="file-field">
-            {isCircle ? "Enviar cartaz (crop A4)" : "Enviar foto (crop 15x10)"}
-            <input
-              type="file"
-              accept="image/*"
-              disabled={!canManageTeams}
-              onChange={(event) => actions.onTeamPhotoFileChange(event, encounterId, type, team)}
-            />
-          </label>
-          {!isCircle && shell.pdfTitleSettings.mode === "TEAM_ART" && (
-            <>
-              <h3 className="team-title-art-title">Arte do título da equipe</h3>
-              {team.titulo_arte_url ? (
-                <img className="title-art-thumb" src={mediaUrl(team.titulo_arte_url)} alt={`Título ${team.nome}`} />
-              ) : (
-                <p className="muted">Nenhuma arte de título enviada.</p>
-              )}
-              <label className="file-field">
-                Enviar arte do título
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={!canManageTeams}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    event.target.value = "";
-                    actions.handleUploadTeamTitleArt(encounterId, type, team.id, file);
-                  }}
-                />
-              </label>
-            </>
-          )}
-        </div>
-        <div>
-          <h3>Importação de Excel/CSV</h3>
-          <p className="muted">Dados manuais/importados serão agrupados por cargos nesta tela e no PDF.</p>
-          <label className="file-field">
-            Arquivo
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              disabled={!canImportMembers}
-              onChange={(event) => {
-                actions.setImportFile(event.target.files?.[0] || null);
-                actions.clearImportValidation();
-              }}
-            />
-          </label>
-          <div className="actions-row">
-            <button
-              className="ghost"
-              disabled={!shell.importFile || !canImportMembers || shell.importValidating}
-              onClick={() => actions.handleValidateImportMembers(encounterId, teamId)}
-            >
-              {shell.importValidating ? "Validando..." : "Validar arquivo"}
-            </button>
-            <button disabled={!shell.importFile || !canImportMembers} onClick={() => actions.handleImportMembers(encounterId, teamId)}>
-              Importar dados
-            </button>
-          </div>
-          {shell.importValidation && shell.importValidationTeamId === teamId && (
-            <div className="import-validation-inline">
-              <p className="muted">
-                Última validação: {shell.importValidation.summary.registrosPrevistos} registro(s) previsto(s),{" "}
-                {shell.importValidation.differences.filter((item: ImportValidationDifference) => item.severity === "error").length} erro(s),{" "}
-                {shell.importValidation.differences.filter((item: ImportValidationDifference) => item.severity === "warning").length} alerta(s).
-              </p>
-              <button className="ghost" onClick={() => actions.openImportValidationReport()}>
-                Ver relatório
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div id="member-form-panel" className="panel">
-        {shell.memberForm.id > 0 ? (
-          <>
-            <h3>Adicionar membro</h3>
-            <p className="muted">Existe uma edição aberta no modal. Conclua ou cancele a edição para adicionar novo membro.</p>
-          </>
-        ) : (
-          <>
-            <h3>Adicionar membro</h3>
-            <form className="grid-form three" onSubmit={(event) => actions.handleSaveMember(encounterId, teamId, event)}>
-              <label>
-                Cargo
-                <input
-                  required
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.cargoNome}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, cargoNome: event.target.value }))}
-                />
-              </label>
-              <label>
-                Nome principal
-                <input
-                  required
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.nomePrincipal}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, nomePrincipal: event.target.value }))}
-                />
-              </label>
-              <label>
-                Nome secundário (casal)
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.nomeSecundario}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, nomeSecundario: event.target.value }))}
-                />
-              </label>
-              <label>
-                Telefone principal
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.telefonePrincipal}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, telefonePrincipal: event.target.value }))}
-                />
-              </label>
-              <label>
-                Telefone secundário
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.telefoneSecundario}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, telefoneSecundario: event.target.value }))}
-                />
-              </label>
-              <label>
-                Paróquia
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.paroquia}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, paroquia: event.target.value }))}
-                />
-              </label>
-              <div className="actions-row">
-                <button type="submit" disabled={!canManageMembers}>
-                  Adicionar membro
-                </button>
-              </div>
-            </form>
-          </>
         )}
-      </div>
 
-      {shell.memberForm.id > 0 && (
-        <div className="crop-backdrop" onClick={() => actions.cancelMemberEdit()}>
-          <div className="form-modal" onClick={(event) => event.stopPropagation()}>
-            <h3>Editar membro</h3>
-            <form className="grid-form three" onSubmit={(event) => actions.handleSaveMember(encounterId, teamId, event)}>
-              <label>
-                Cargo
-                <input
-                  required
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.cargoNome}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, cargoNome: event.target.value }))}
-                />
-              </label>
-              <label>
-                Nome principal
-                <input
-                  required
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.nomePrincipal}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, nomePrincipal: event.target.value }))}
-                />
-              </label>
-              <label>
-                Nome secundário (casal)
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.nomeSecundario}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, nomeSecundario: event.target.value }))}
-                />
-              </label>
-              <label>
-                Telefone principal
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.telefonePrincipal}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, telefonePrincipal: event.target.value }))}
-                />
-              </label>
-              <label>
-                Telefone secundário
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.telefoneSecundario}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, telefoneSecundario: event.target.value }))}
-                />
-              </label>
-              <label>
-                Paróquia
-                <input
-                  disabled={!canManageMembers}
-                  value={shell.memberForm.paroquia}
-                  onChange={(event) => actions.setMemberForm((prev: MemberFormState) => ({ ...prev, paroquia: event.target.value }))}
-                />
-              </label>
-              <div className="actions-row">
-                <button className="ghost" type="button" disabled={!canManageMembers} onClick={() => actions.cancelMemberEdit()}>
-                  Cancelar
-                </button>
-                <button type="submit" disabled={!canManageMembers}>Salvar edição</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      <div className="panel">
-        <h3>Membros agrupados por cargo</h3>
-        {groupedMembers.map((group) => (
-          <section className="cargo-section" key={group.cargo}>
-            <h4>{group.cargo}</h4>
-            <div className="members-grid">
-              {group.membros.map((member) => (
-                <article key={member.id} className={`member-card ${showCircleMemberPhotos ? "" : "compact"}`.trim()}>
-                  {showCircleMemberPhotos && (
-                    <div className="member-media">
-                      {member.foto_url ? (
-                        <img className="member-photo" src={mediaUrl(member.foto_url)} alt={member.nome_principal} />
-                      ) : (
-                        <div className="member-photo member-photo-empty">Sem foto</div>
-                      )}
-                      <label className="file-field member-file-field">
-                        Foto
-                        <input
-                          type="file"
-                          accept="image/*"
-                          disabled={!canManageMembers}
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            event.target.value = "";
-                            if (!file) return;
-                            actions.onMemberPhotoFileChange(encounterId, teamId, member, file);
-                          }}
-                        />
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="member-main">
-                    <strong>
-                      {member.nome_principal}
-                      {member.nome_secundario ? ` & ${member.nome_secundario}` : ""}
-                    </strong>
-                    <span>Contato 1: {member.telefone_principal || "-"}</span>
-                    <span>Contato 2: {member.telefone_secundario || "-"}</span>
-                    <span>Paróquia: {member.paroquia || "-"}</span>
-                  </div>
-
-                  <div className="actions-row member-actions">
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={!canManageMembers}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        actions.handleEditMember(member);
-                      }}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="danger-btn"
-                      disabled={!canManageMembers}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        actions.handleDeleteMember(encounterId, teamId, member.id);
-                      }}
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                </article>
-              ))}
+        {activeSection === "settings" && (
+          <section className="stack">
+            <div className="panel">
+              <h1>Configuracoes do Caixa EJC</h1>
+              <p className="muted">Configure a chave PIX e os dados que aparecem no QR Code.</p>
+              <form className="grid-form two" onSubmit={savePixSettingsForm}>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={pixSettings.enabled}
+                    disabled={!can(PERMISSIONS.USERS_MANAGE)}
+                    onChange={(event) => setPixSettings((prev) => ({ ...prev, enabled: event.target.checked }))}
+                  />
+                  PIX habilitado
+                </label>
+                <label>
+                  Chave PIX
+                  <input
+                    placeholder="CPF, e-mail, telefone ou chave aleatoria"
+                    value={pixSettings.pix_key}
+                    disabled={!can(PERMISSIONS.USERS_MANAGE)}
+                    onChange={(event) => setPixSettings((prev) => ({ ...prev, pix_key: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Nome do recebedor
+                  <input
+                    value={pixSettings.merchant_name}
+                    disabled={!can(PERMISSIONS.USERS_MANAGE)}
+                    onChange={(event) => setPixSettings((prev) => ({ ...prev, merchant_name: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Cidade
+                  <input
+                    value={pixSettings.merchant_city}
+                    disabled={!can(PERMISSIONS.USERS_MANAGE)}
+                    onChange={(event) => setPixSettings((prev) => ({ ...prev, merchant_city: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Descricao padrao do PIX
+                  <input
+                    value={pixSettings.description}
+                    disabled={!can(PERMISSIONS.USERS_MANAGE)}
+                    onChange={(event) => setPixSettings((prev) => ({ ...prev, description: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Prefixo do TXID
+                  <input
+                    value={pixSettings.txid_prefix}
+                    disabled={!can(PERMISSIONS.USERS_MANAGE)}
+                    onChange={(event) => setPixSettings((prev) => ({ ...prev, txid_prefix: event.target.value }))}
+                  />
+                </label>
+                <div className="actions-row">
+                  <button type="submit" disabled={!can(PERMISSIONS.USERS_MANAGE)}>Salvar configuracoes PIX</button>
+                  <button type="button" className="ghost" onClick={() => void loadPixSettings().catch((err) => setError(parseError(err)))}>Recarregar</button>
+                </div>
+              </form>
             </div>
           </section>
-        ))}
-        {groupedMembers.length === 0 && <p className="muted">Sem membros cadastrados nesta equipe.</p>}
-      </div>
-    </section>
-  );
-}
+        )}
 
-function AssetsScreen({ shell, actions }: { shell: any; actions: any }) {
-  const params = useParams();
-  const encounterId = parseNumericParam(params.encounterId);
-  const canManageAssets = shell.can(PERMISSIONS.ASSETS_MANAGE);
-
-  useEffect(() => {
-    if (encounterId) actions.refreshAssets(encounterId);
-  }, [encounterId]);
-
-  if (!encounterId) return <Navigate to="/encounters" replace />;
-
-  return (
-    <section className="page-stack">
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Capas e Artes A4</h2>
-          <div className="actions-row">
-            <HelpButton onClick={() => actions.openHelp("ASSETS")} label="Ajuda de capas e artes" />
-            <Link className="as-btn" to={`/encounters/${encounterId}`}>Voltar</Link>
-          </div>
-        </div>
-        <form className="grid-form two" onSubmit={(event) => actions.handleSaveAsset(encounterId, event)}>
-          <label>
-            Tipo
-            <select
-              disabled={!canManageAssets}
-              value={shell.assetForm.tipo}
-              onChange={(event) => actions.setAssetForm((prev: any) => ({ ...prev, tipo: event.target.value }))}
-            >
-              {ASSET_TYPES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Ordem
-            <input
-              type="number"
-              disabled={!canManageAssets}
-              value={shell.assetForm.ordem}
-              onChange={(event) =>
-                actions.setAssetForm((prev: any) => ({ ...prev, ordem: Number(event.target.value || "0") }))
-              }
-            />
-          </label>
-          <label>
-            Título
-            <input
-              disabled={!canManageAssets}
-              value={shell.assetForm.titulo}
-              onChange={(event) => actions.setAssetForm((prev: any) => ({ ...prev, titulo: event.target.value }))}
-            />
-          </label>
-          <label className="file-field">
-            Arquivo (A4 com crop)
-            <input
-              required
-              type="file"
-              accept="image/*"
-              disabled={!canManageAssets}
-              onChange={(event) =>
-                actions.setAssetForm((prev: any) => ({ ...prev, file: event.target.files?.[0] || null }))
-              }
-            />
-          </label>
-          <button type="submit" disabled={!canManageAssets}>Recortar e enviar arte</button>
-        </form>
-      </div>
-
-      <div className="panel">
-        <h2>Artes cadastradas</h2>
-        <div className="assets-grid">
-          {shell.assets.map((asset: Asset) => (
-            <article key={asset.id} className="asset-card">
-              <img src={mediaUrl(asset.image_url)} alt={asset.titulo || asset.tipo} />
-              <div>
-                <strong>{asset.titulo || asset.tipo}</strong>
-                <p>{asset.tipo} | ordem {asset.ordem}</p>
+        {activeSection === "audit" && (
+          <section className="stack">
+            <div className="panel">
+              <div className="panel-head">
+                <h1>Auditoria</h1>
+                <button className="ghost" onClick={() => void loadAudit().catch((err) => setError(parseError(err)))}>Atualizar</button>
               </div>
-              <button className="danger-btn" disabled={!canManageAssets} onClick={() => actions.handleDeleteAsset(encounterId, asset.id)}>
-                Excluir
-              </button>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
+              <table><thead><tr><th>Data</th><th>Usuario</th><th>Acao</th><th>Recurso</th><th>Resumo</th></tr></thead><tbody>{auditLogs.map((log) => <tr key={log.id}><td>{formatDateTime(log.created_at)}</td><td>{log.user_nome || "-"}</td><td>{log.action}</td><td>{log.resource_type}</td><td>{log.summary}</td></tr>)}</tbody></table>
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
   );
 }
 
 export default App;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
