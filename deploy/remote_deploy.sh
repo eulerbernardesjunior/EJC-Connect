@@ -7,6 +7,9 @@ HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/api/health}"
 PROJECT_NAME="${PROJECT_NAME:-ejc-connect}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-40}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-3}"
+HEALTH_CURL_RETRY="${HEALTH_CURL_RETRY:-3}"
+HEALTH_CURL_RETRY_DELAY="${HEALTH_CURL_RETRY_DELAY:-1}"
+HEALTH_CURL_MAX_TIME="${HEALTH_CURL_MAX_TIME:-10}"
 BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/.deploy-backups}"
 
 if [ ! -f "$ARCHIVE_PATH" ]; then
@@ -49,7 +52,6 @@ if [ ! -f "$APP_DIR/.env" ]; then
   exit 1
 fi
 
-# Remove containers antigos com os nomes fixos para evitar conflito entre projetos compose.
 for CONTAINER_NAME in ejc-connect-db ejc-connect-backend ejc-connect-web; do
   if $DOCKER_CMD ps -a --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
     $DOCKER_CMD rm -f "$CONTAINER_NAME" >/dev/null
@@ -58,14 +60,55 @@ done
 
 $DOCKER_CMD compose -p "$PROJECT_HASH" -f "$APP_DIR/docker-compose.yml" up -d --build --remove-orphans
 
+add_health_candidate() {
+  local candidate="$1"
+  [ -n "$candidate" ] || return 0
+  for existing in "${HEALTH_CANDIDATES[@]:-}"; do
+    [ "$existing" = "$candidate" ] && return 0
+  done
+  HEALTH_CANDIDATES+=("$candidate")
+}
+
+HEALTH_CANDIDATES=()
+add_health_candidate "$HEALTH_URL"
+
+APP_PORT_VALUE=""
+if [ -f "$APP_DIR/.env" ]; then
+  APP_PORT_VALUE="$(grep -E '^APP_PORT=' "$APP_DIR/.env" | tail -n 1 | cut -d '=' -f 2- | tr -d '"' | tr -d '\r' | xargs || true)"
+fi
+
+if [ -n "$APP_PORT_VALUE" ]; then
+  add_health_candidate "http://127.0.0.1:${APP_PORT_VALUE}/api/health"
+fi
+
+add_health_candidate "http://127.0.0.1:8080/api/health"
+
+check_health_any() {
+  local candidate
+  for candidate in "${HEALTH_CANDIDATES[@]}"; do
+    if curl -fsS \
+      --retry "$HEALTH_CURL_RETRY" \
+      --retry-delay "$HEALTH_CURL_RETRY_DELAY" \
+      --retry-connrefused \
+      --max-time "$HEALTH_CURL_MAX_TIME" \
+      "$candidate" >/dev/null 2>&1; then
+      HEALTH_URL="$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 ATTEMPT=1
-until curl -fsS "$HEALTH_URL" >/dev/null; do
+sleep 2
+until check_health_any; do
   if [ "$ATTEMPT" -ge "$HEALTH_ATTEMPTS" ]; then
-    echo "Health check falhou apos $HEALTH_ATTEMPTS tentativas: $HEALTH_URL"
+    echo "Health check falhou apos $HEALTH_ATTEMPTS tentativas. Candidatos testados: ${HEALTH_CANDIDATES[*]}"
     $DOCKER_CMD compose -p "$PROJECT_HASH" -f "$APP_DIR/docker-compose.yml" ps || true
     $DOCKER_CMD compose -p "$PROJECT_HASH" -f "$APP_DIR/docker-compose.yml" logs --tail=150 backend web || true
     exit 1
   fi
+  echo "Aguardando health check ($ATTEMPT/$HEALTH_ATTEMPTS): ${HEALTH_CANDIDATES[*]}"
   ATTEMPT=$((ATTEMPT + 1))
   sleep "$HEALTH_SLEEP_SECONDS"
 done
