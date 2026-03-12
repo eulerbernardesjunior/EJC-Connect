@@ -6,7 +6,7 @@ import { PERMISSIONS } from "../auth/permissions.js";
 import { env } from "../config/env.js";
 import { pool } from "../db/pool.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { requireAuth, requirePermission } from "../middleware/auth.js";
+import { canManageTeam, hasTeamScopeAssignments, requireAuth, requirePermission } from "../middleware/auth.js";
 import { logAudit } from "../services/auditService.js";
 import { deleteUploadedByUrl, deleteUploadedFile, imageUploadFilter } from "../utils/upload.js";
 import { isValidHexColor, normalizeEnum, parsePositiveInt } from "../utils/validation.js";
@@ -56,6 +56,17 @@ router.get(
       WHERE encontro_id = $1
     `;
 
+    if (hasTeamScopeAssignments(req.user)) {
+      values.push(req.user.id);
+      sql += ` AND EXISTS (
+        SELECT 1
+        FROM app_user_team_scopes scopes
+        WHERE scopes.user_id = $${values.length}
+          AND scopes.team_id = equipes.id
+          AND (scopes.can_view = TRUE OR scopes.can_manage = TRUE)
+      )`;
+    }
+
     if (tipo) {
       const normalizedType = normalizeEnum(tipo);
       if (!TEAM_TYPES.has(normalizedType)) {
@@ -76,6 +87,12 @@ router.post(
   "/",
   requirePermission(PERMISSIONS.TEAMS_MANAGE),
   asyncHandler(async (req, res) => {
+    if (hasTeamScopeAssignments(req.user)) {
+      return res
+        .status(403)
+        .json({ error: "Usuario com escopo por equipe nao pode criar novas equipes." });
+    }
+
     const { encontroId, nome, tipo, corHex, slogan, ordem } = req.body;
     if (!encontroId || !nome || !tipo) {
       return res.status(400).json({ error: "Campos obrigatorios: encontroId, nome, tipo." });
@@ -155,6 +172,9 @@ router.put(
       return res.status(404).json({ error: "Equipe/Circulo nao encontrado." });
     }
     const existing = existingResult.rows[0];
+    if (!canManageTeam(req.user, teamId)) {
+      return res.status(403).json({ error: "Sem permissao para editar esta equipe." });
+    }
 
     const { nome, tipo, corHex, slogan, ordem } = req.body;
     const mergedName = nome !== undefined ? String(nome).trim() : String(existing.nome || "").trim();
@@ -241,6 +261,10 @@ router.post(
       await deleteUploadedFile(req.file.path);
       return res.status(404).json({ error: "Equipe/Circulo nao encontrado." });
     }
+    if (!canManageTeam(req.user, teamId)) {
+      await deleteUploadedFile(req.file.path);
+      return res.status(403).json({ error: "Sem permissao para editar esta equipe." });
+    }
     const previousPhoto = existingResult.rows[0].foto_url;
 
     let result;
@@ -300,6 +324,10 @@ router.post(
       await deleteUploadedFile(req.file.path);
       return res.status(404).json({ error: "Equipe/Circulo nao encontrado." });
     }
+    if (!canManageTeam(req.user, teamId)) {
+      await deleteUploadedFile(req.file.path);
+      return res.status(403).json({ error: "Sem permissao para editar esta equipe." });
+    }
     const previousTitleArt = existingResult.rows[0].titulo_arte_url;
 
     let result;
@@ -350,6 +378,9 @@ router.delete(
     const existingResult = await pool.query("SELECT id, encontro_id, nome, tipo, foto_url, titulo_arte_url FROM equipes WHERE id = $1", [teamId]);
     if (existingResult.rowCount === 0) {
       return res.status(404).json({ error: "Equipe/Circulo nao encontrado." });
+    }
+    if (!canManageTeam(req.user, teamId)) {
+      return res.status(403).json({ error: "Sem permissao para editar esta equipe." });
     }
     const existing = existingResult.rows[0];
 

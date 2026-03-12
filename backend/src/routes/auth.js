@@ -17,8 +17,47 @@ function sanitizeUser(userRow) {
     permissao: userRow.permissao,
     ativo: userRow.ativo,
     permissions: userRow.permissions || {},
-    effectivePermissions: buildEffectivePermissions(userRow.permissao, userRow.permissions || {})
+    effectivePermissions: buildEffectivePermissions(userRow.permissao, userRow.permissions || {}),
+    teamScopes: []
   };
+}
+
+async function loadTeamScopesForUser(userId) {
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          s.team_id,
+          s.encounter_id,
+          s.can_view,
+          s.can_manage,
+          e.nome AS team_nome,
+          e.tipo AS team_tipo,
+          COALESCE(en.nome, en.tema, ('Encontro #' || en.id::text)) AS encounter_nome
+        FROM app_user_team_scopes s
+        JOIN equipes e ON e.id = s.team_id
+        JOIN encontros en ON en.id = s.encounter_id
+        WHERE s.user_id = $1
+        ORDER BY s.encounter_id, e.ordem ASC, e.nome ASC
+      `,
+      [userId]
+    );
+
+    return result.rows.map((row) => ({
+      team_id: Number(row.team_id),
+      encounter_id: Number(row.encounter_id),
+      team_nome: row.team_nome,
+      team_tipo: row.team_tipo,
+      encounter_nome: row.encounter_nome,
+      can_view: Boolean(row.can_view),
+      can_manage: Boolean(row.can_manage)
+    }));
+  } catch (error) {
+    if (error?.code === "42P01") {
+      return [];
+    }
+    throw error;
+  }
 }
 
 router.post(
@@ -60,9 +99,12 @@ router.post(
 
     await pool.query("UPDATE app_users SET last_login_at = now() WHERE id = $1", [user.id]);
 
+    const sanitizedUser = sanitizeUser(user);
+    sanitizedUser.teamScopes = await loadTeamScopesForUser(user.id);
+
     return res.status(200).json({
       token,
-      user: sanitizeUser(user),
+      user: sanitizedUser,
       permissionsCatalog: allPermissionKeys(),
       permissionsMap: PERMISSIONS
     });

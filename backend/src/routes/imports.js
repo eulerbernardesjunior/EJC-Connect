@@ -5,13 +5,9 @@ import { Router } from "express";
 import { PERMISSIONS } from "../auth/permissions.js";
 import { env } from "../config/env.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { requireAuth, requirePermission } from "../middleware/auth.js";
+import { canManageTeam, hasTeamScopeAssignments, requireAuth, requirePermission } from "../middleware/auth.js";
 import { logAudit } from "../services/auditService.js";
-import {
-  importCirclesFromFile,
-  importMembersFromFile,
-  validateMembersImportFile
-} from "../services/importService.js";
+import { importCirclesFromFile, importMembersFromFile } from "../services/importService.js";
 import { spreadsheetUploadFilter } from "../utils/upload.js";
 import { parsePositiveInt } from "../utils/validation.js";
 
@@ -41,71 +37,6 @@ const upload = multer({
 });
 
 router.post(
-  "/validate",
-  requirePermission(PERMISSIONS.IMPORTS_RUN),
-  upload.single("file"),
-  asyncHandler(async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "Arquivo obrigatorio (campo: file)." });
-    }
-
-    const { encounterId, teamId } = req.body;
-    if (!encounterId || !teamId) {
-      await fs.unlink(req.file.path).catch(() => {});
-      return res
-        .status(400)
-        .json({ success: false, message: "encounterId e teamId sao obrigatorios." });
-    }
-
-    const encounterIdNumber = parsePositiveInt(encounterId);
-    const teamIdNumber = parsePositiveInt(teamId);
-    if (!encounterIdNumber || !teamIdNumber) {
-      await fs.unlink(req.file.path).catch(() => {});
-      return res.status(400).json({
-        success: false,
-        message: "encounterId e teamId devem ser inteiros positivos."
-      });
-    }
-
-    try {
-      const diagnostico = await validateMembersImportFile({
-        encounterId: encounterIdNumber,
-        teamId: teamIdNumber,
-        filePath: path.resolve(req.file.path)
-      });
-
-      await logAudit({
-        req,
-        action: "IMPORT",
-        resourceType: "MEMBROS_VALIDACAO",
-        resourceId: teamIdNumber,
-        encounterId: encounterIdNumber,
-        summary: `Validação de importação executada para equipe ${teamIdNumber}`,
-        details: {
-          profileCode: diagnostico?.team?.profileCode || null,
-          profileLabel: diagnostico?.team?.profileLabel || null,
-          summary: diagnostico?.summary || {},
-          differences: diagnostico?.differences || []
-        }
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Validacao concluida.",
-        diagnostico
-      });
-    } catch (error) {
-      return res.status(error.status || 400).json({
-        success: false,
-        message: `Erro na validacao: ${error.message}`
-      });
-    } finally {
-      await fs.unlink(req.file.path).catch(() => {});
-    }
-  })
-);
-
-router.post(
   "/",
   requirePermission(PERMISSIONS.IMPORTS_RUN),
   upload.single("file"),
@@ -129,6 +60,13 @@ router.post(
       return res.status(400).json({
         success: false,
         message: "encounterId e teamId devem ser inteiros positivos."
+      });
+    }
+    if (!canManageTeam(req.user, teamIdNumber)) {
+      await fs.unlink(req.file.path).catch(() => {});
+      return res.status(403).json({
+        success: false,
+        message: "Sem permissao para importar nesta equipe."
       });
     }
 
@@ -176,6 +114,14 @@ router.post(
   requirePermission(PERMISSIONS.CIRCLES_IMPORT),
   upload.single("file"),
   asyncHandler(async (req, res) => {
+    if (hasTeamScopeAssignments(req.user)) {
+      await fs.unlink(req.file?.path || "").catch(() => {});
+      return res.status(403).json({
+        success: false,
+        message: "Importacao geral de circulos exige acesso global de equipes."
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({ success: false, message: "Arquivo obrigatorio (campo: file)." });
     }
