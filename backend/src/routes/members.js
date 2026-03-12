@@ -6,7 +6,7 @@ import { PERMISSIONS } from "../auth/permissions.js";
 import { env } from "../config/env.js";
 import { pool } from "../db/pool.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { requireAuth, requirePermission } from "../middleware/auth.js";
+import { canManageTeam, canViewTeam, hasTeamScopeAssignments, requireAuth, requirePermission } from "../middleware/auth.js";
 import { logAudit } from "../services/auditService.js";
 import { deleteUploadedByUrl, deleteUploadedFile, imageUploadFilter } from "../utils/upload.js";
 import { parsePositiveInt } from "../utils/validation.js";
@@ -55,8 +55,20 @@ router.get(
       if (!teamIdNumber) {
         return res.status(400).json({ error: "teamId invalido." });
       }
+      if (!canViewTeam(req.user, teamIdNumber)) {
+        return res.status(403).json({ error: "Sem permissao para acessar esta equipe." });
+      }
       values.push(teamIdNumber);
       query += " AND equipe_id = $2";
+    } else if (hasTeamScopeAssignments(req.user)) {
+      values.push(req.user.id);
+      query += ` AND EXISTS (
+        SELECT 1
+        FROM app_user_team_scopes scopes
+        WHERE scopes.user_id = $${values.length}
+          AND scopes.team_id = membros.equipe_id
+          AND (scopes.can_view = TRUE OR scopes.can_manage = TRUE)
+      )`;
     }
 
     query += " ORDER BY cargo_nome ASC NULLS LAST, nome_principal ASC";
@@ -90,6 +102,9 @@ router.post(
     const teamIdNumber = parsePositiveInt(equipeId);
     if (!encounterIdNumber || !teamIdNumber) {
       return res.status(400).json({ error: "encontroId e equipeId devem ser inteiros positivos." });
+    }
+    if (!canManageTeam(req.user, teamIdNumber)) {
+      return res.status(403).json({ error: "Sem permissao para editar esta equipe." });
     }
 
     const cleanMainName = String(nomePrincipal || "").trim();
@@ -165,6 +180,9 @@ router.put(
       return res.status(404).json({ error: "Membro nao encontrado." });
     }
     const existing = existingResult.rows[0];
+    if (!canManageTeam(req.user, existing.equipe_id)) {
+      return res.status(403).json({ error: "Sem permissao para editar este membro." });
+    }
 
     const {
       cargoNome,
@@ -244,10 +262,15 @@ router.post(
     }
 
     const photoUrl = `/uploads/members/${req.file.filename}`;
-    const existingResult = await pool.query("SELECT id, foto_url FROM membros WHERE id = $1 LIMIT 1", [memberId]);
+    const existingResult = await pool.query("SELECT id, equipe_id, foto_url FROM membros WHERE id = $1 LIMIT 1", [memberId]);
     if (existingResult.rowCount === 0) {
       await deleteUploadedFile(req.file.path);
       return res.status(404).json({ error: "Membro nao encontrado." });
+    }
+    const memberTeamId = existingResult.rows[0].equipe_id;
+    if (!canManageTeam(req.user, memberTeamId)) {
+      await deleteUploadedFile(req.file.path);
+      return res.status(403).json({ error: "Sem permissao para editar este membro." });
     }
     const previousPhoto = existingResult.rows[0].foto_url;
 
@@ -304,6 +327,9 @@ router.delete(
       return res.status(404).json({ error: "Membro nao encontrado." });
     }
     const existing = existingResult.rows[0];
+    if (!canManageTeam(req.user, existing.equipe_id)) {
+      return res.status(403).json({ error: "Sem permissao para editar este membro." });
+    }
 
     const result = await pool.query("DELETE FROM membros WHERE id = $1 RETURNING id, foto_url", [memberId]);
     if (result.rowCount === 0) {

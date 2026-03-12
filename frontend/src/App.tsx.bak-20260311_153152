@@ -6,7 +6,6 @@ import {
   Navigate,
   Route,
   Routes,
-  useLocation,
   useNavigate,
   useParams
 } from "react-router-dom";
@@ -57,16 +56,6 @@ type Member = {
   foto_url: string | null;
 };
 
-type TeamScope = {
-  team_id: number;
-  encounter_id: number;
-  team_nome: string;
-  team_tipo: TeamType;
-  encounter_nome: string;
-  can_view: boolean;
-  can_manage: boolean;
-};
-
 type AppUser = {
   id: number;
   nome: string;
@@ -76,7 +65,6 @@ type AppUser = {
   last_login_at?: string | null;
   permissions: Record<string, boolean>;
   effectivePermissions: Record<string, boolean>;
-  teamScopes: TeamScope[];
 };
 
 type RoleType = AppUser["permissao"];
@@ -90,12 +78,6 @@ type AuthResponse = {
 type MeResponse = {
   user: AppUser;
   permissionsCatalog: string[];
-};
-
-type UserMetaResponse = {
-  roles: RoleType[];
-  permissionsCatalog: string[];
-  teamScopeCatalog: TeamScope[];
 };
 
 type DashboardStats = {
@@ -261,217 +243,6 @@ const PERMISSIONS = {
   USERS_VIEW: "users.view",
   USERS_MANAGE: "users.manage"
 } as const;
-
-const PERMISSION_UI_TEXT: Record<string, { label: string; description: string }> = {
-  [PERMISSIONS.DASHBOARD_VIEW]: {
-    label: "Dashboard",
-    description: "Visualizar indicadores gerais do encontro."
-  },
-  [PERMISSIONS.ENCOUNTERS_VIEW]: {
-    label: "Ver encontros",
-    description: "Acessar a lista e a visão geral de encontros."
-  },
-  [PERMISSIONS.ENCOUNTERS_MANAGE]: {
-    label: "Gerenciar encontros",
-    description: "Criar, editar e excluir encontros."
-  },
-  [PERMISSIONS.TEAMS_VIEW]: {
-    label: "Ver equipes e círculos",
-    description: "Acessar listagens e detalhes de equipes/círculos."
-  },
-  [PERMISSIONS.TEAMS_MANAGE]: {
-    label: "Gerenciar equipes e círculos",
-    description: "Criar, editar, ordenar e excluir equipes/círculos."
-  },
-  [PERMISSIONS.MEMBERS_VIEW]: {
-    label: "Ver membros",
-    description: "Visualizar membros agrupados por cargo."
-  },
-  [PERMISSIONS.MEMBERS_MANAGE]: {
-    label: "Gerenciar membros",
-    description: "Criar, editar, excluir e enviar fotos de membros."
-  },
-  [PERMISSIONS.IMPORTS_RUN]: {
-    label: "Importar membros (arquivo)",
-    description: "Executar importação XLSX/CSV para equipes e círculos."
-  },
-  [PERMISSIONS.CIRCLES_IMPORT]: {
-    label: "Importação geral de círculos",
-    description: "Importar todos os círculos de um encontro em lote."
-  },
-  [PERMISSIONS.PDF_GENERATE]: {
-    label: "Gerar PDF (Quadrante)",
-    description: "Gerar prévia e quadrante completo em PDF."
-  },
-  [PERMISSIONS.ASSETS_VIEW]: {
-    label: "Ver capas e artes",
-    description: "Visualizar capas, separadores e cartazes."
-  },
-  [PERMISSIONS.ASSETS_MANAGE]: {
-    label: "Gerenciar capas e artes",
-    description: "Enviar, ordenar e excluir artes A4."
-  },
-  [PERMISSIONS.USERS_VIEW]: {
-    label: "Ver usuários",
-    description: "Visualizar usuários e permissões."
-  },
-  [PERMISSIONS.USERS_MANAGE]: {
-    label: "Gerenciar usuários",
-    description: "Criar, editar, excluir usuários e permissões."
-  }
-};
-
-type HelpTopicKey =
-  | "dashboard"
-  | "encounters"
-  | "encounter-hub"
-  | "team-list"
-  | "circle-list"
-  | "team-detail"
-  | "circle-detail"
-  | "assets"
-  | "settings"
-  | "default";
-
-type HelpTopic = {
-  title: string;
-  html: string;
-};
-
-const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
-  dashboard: {
-    title: "Ajuda - Dashboard",
-    html: `
-      <p>O Dashboard apresenta os totais do encontro selecionado (ou de todos).</p>
-      <ul>
-        <li><strong>Encontros:</strong> quantidade cadastrada.</li>
-        <li><strong>Equipes / Círculos:</strong> total de grupos.</li>
-        <li><strong>Capas/Cartazes:</strong> artes A4 cadastradas.</li>
-        <li><strong>Membros:</strong> participantes e colaboradores.</li>
-      </ul>
-    `
-  },
-  encounters: {
-    title: "Ajuda - Encontros",
-    html: `
-      <p>Nesta tela você cria e acessa encontros.</p>
-      <ul>
-        <li><strong>Cadastrar encontro:</strong> informe nome, data de início e data de fim.</li>
-        <li><strong>Abrir gestão:</strong> entra na visão de cards do encontro.</li>
-        <li><strong>Quadrante:</strong> gera o PDF completo do encontro.</li>
-      </ul>
-    `
-  },
-  "encounter-hub": {
-    title: "Ajuda - Gestão do Encontro",
-    html: `
-      <p>Esta tela organiza a gestão por cards:</p>
-      <ul>
-        <li><strong>Equipes:</strong> cadastro, ordem de impressão e integrantes.</li>
-        <li><strong>Círculos:</strong> cadastro, cartaz e integrantes.</li>
-        <li><strong>Capas e separadores:</strong> envio de artes A4.</li>
-      </ul>
-    `
-  },
-  "team-list": {
-    title: "Ajuda - Equipes",
-    html: `
-      <p>Crie e organize as equipes de trabalho.</p>
-      <ul>
-        <li><strong>Ordem de impressão:</strong> define a sequência no PDF.</li>
-        <li><strong>Abrir:</strong> acessa detalhes, membros, foto e importação.</li>
-        <li><strong>Editar/Excluir:</strong> disponível conforme permissão.</li>
-      </ul>
-    `
-  },
-  "circle-list": {
-    title: "Ajuda - Círculos",
-    html: `
-      <p>Além do cadastro manual, existe importação geral de círculos.</p>
-      <p><strong>Exemplo mínimo aceito (importação geral):</strong></p>
-      <table>
-        <thead><tr><th>Círculo</th><th>Cargo</th><th>Nome</th><th>Telefone</th><th>Paróquia</th></tr></thead>
-        <tbody>
-          <tr><td>AZUL</td><td>Tios Circulistas</td><td>Tio João</td><td>(11) 99999-0001</td><td>Santa Ana</td></tr>
-          <tr><td>AZUL</td><td>Jovem Circulista</td><td>Ana Souza</td><td>(11) 99999-0002</td><td>Santa Ana</td></tr>
-          <tr><td>AZUL</td><td>Jovem</td><td>Carlos Lima</td><td>(11) 99999-0003</td><td>Santa Ana</td></tr>
-        </tbody>
-      </table>
-    `
-  },
-  "team-detail": {
-    title: "Ajuda - Detalhe da Equipe",
-    html: `
-      <p>Gerencie foto da equipe, integrantes e importação da equipe.</p>
-      <ul>
-        <li><strong>Enviar foto:</strong> abre crop 15x10 antes do upload.</li>
-        <li><strong>Importar dados:</strong> arquivo XLSX/CSV da equipe atual.</li>
-        <li><strong>Visualizar quadrante da equipe:</strong> gera PDF parcial.</li>
-      </ul>
-      <p><strong>Exemplo mínimo aceito (importação da equipe):</strong></p>
-      <table>
-        <thead><tr><th>Cargo</th><th>Nome principal</th><th>Nome secundário</th><th>Telefone 1</th><th>Telefone 2</th><th>Paróquia</th></tr></thead>
-        <tbody>
-          <tr><td>Jovem Coordenador</td><td>Pedro Alves</td><td></td><td>(11) 98888-1000</td><td></td><td>Santa Ana</td></tr>
-          <tr><td>Tios Coordenadores</td><td>Tio Marcos</td><td>Tia Lúcia</td><td>(11) 97777-2000</td><td>(11) 96666-2001</td><td>Santa Ana</td></tr>
-          <tr><td>Integrante</td><td>Joana Melo</td><td></td><td>(11) 95555-3000</td><td></td><td>Santa Ana</td></tr>
-        </tbody>
-      </table>
-      <p><em>Observação:</em> cargos com “Tio/Tios” podem ser tratados como casal conforme regra do importador.</p>
-    `
-  },
-  "circle-detail": {
-    title: "Ajuda - Detalhe do Círculo",
-    html: `
-      <p>Gerencie cartaz A4, membros e fotos individuais.</p>
-      <ul>
-        <li><strong>Cartaz do círculo:</strong> upload com crop A4.</li>
-        <li><strong>Fotos dos membros:</strong> upload com crop para uso no PDF.</li>
-        <li><strong>Importar dados:</strong> arquivo XLSX/CSV do círculo atual.</li>
-      </ul>
-      <p><strong>Exemplo mínimo aceito (importação do círculo):</strong></p>
-      <table>
-        <thead><tr><th>Cargo</th><th>Nome principal</th><th>Nome secundário</th><th>Telefone 1</th><th>Telefone 2</th><th>Paróquia</th></tr></thead>
-        <tbody>
-          <tr><td>Tios Circulistas</td><td>Tio Paulo</td><td>Tia Helena</td><td>(11) 94444-4000</td><td>(11) 93333-4001</td><td>Santa Ana</td></tr>
-          <tr><td>Jovem Circulista</td><td>Fernanda Rosa</td><td></td><td>(11) 92222-5000</td><td></td><td>Santa Ana</td></tr>
-          <tr><td>Jovem</td><td>Lucas Neri</td><td></td><td>(11) 91111-6000</td><td></td><td>Santa Ana</td></tr>
-        </tbody>
-      </table>
-    `
-  },
-  assets: {
-    title: "Ajuda - Capas e Artes A4",
-    html: `
-      <p>Cadastre artes de página inteira para o quadrante.</p>
-      <ul>
-        <li><strong>Tipos:</strong> capa, separadores, cartaz, música, convite e contra capa.</li>
-        <li><strong>Ordem:</strong> controla a sequência de impressão no PDF.</li>
-        <li><strong>Upload:</strong> sempre passa por crop A4.</li>
-      </ul>
-    `
-  },
-  settings: {
-    title: "Ajuda - Configurações",
-    html: `
-      <p>A tela de configurações possui 3 abas:</p>
-      <ul>
-        <li><strong>Usuários:</strong> cadastro, status e permissões por funcionalidade.</li>
-        <li><strong>Título PDF:</strong> fonte padrão, fonte customizada ou arte por equipe.</li>
-        <li><strong>Auditoria:</strong> rastreio das ações por usuário e encontro.</li>
-      </ul>
-      <p><strong>Permissões:</strong> use descrições amigáveis para liberar apenas o necessário.</p>
-    `
-  },
-  default: {
-    title: "Ajuda do Sistema",
-    html: `
-      <p>Use o menu lateral para navegar entre Dashboard, Encontros e Configurações.</p>
-      <p>As importações são feitas em Equipes/Círculos e em Importação Geral de Círculos.</p>
-      <p>As artes de capa/cartaz são gerenciadas em <strong>Capas e Artes A4</strong>.</p>
-    `
-  }
-};
 
 const ROLE_DEFAULT_PERMISSIONS: Record<RoleType, Record<string, boolean>> = {
   ADMIN: Object.values(PERMISSIONS).reduce((acc, key) => ({ ...acc, [key]: true }), {}),
@@ -681,65 +452,6 @@ function parseError(error: unknown) {
   return error instanceof Error ? error.message : "Erro inesperado.";
 }
 
-function normalizeUser(user: AppUser): AppUser {
-  return {
-    ...user,
-    teamScopes: Array.isArray(user?.teamScopes) ? user.teamScopes : []
-  };
-}
-
-function permissionUiText(permissionKey: string) {
-  if (PERMISSION_UI_TEXT[permissionKey]) {
-    return PERMISSION_UI_TEXT[permissionKey];
-  }
-
-  const [scopeRaw, actionRaw] = permissionKey.split(".");
-  const scope = String(scopeRaw || "").toLowerCase();
-  const action = String(actionRaw || "").toLowerCase();
-
-  const scopeLabelMap: Record<string, string> = {
-    dashboard: "Dashboard",
-    encounters: "Encontros",
-    teams: "Equipes e círculos",
-    members: "Membros",
-    imports: "Importação",
-    circles: "Círculos",
-    pdf: "PDF",
-    assets: "Capas e artes",
-    users: "Usuários",
-    settings: "Configurações"
-  };
-
-  const actionLabelMap: Record<string, string> = {
-    view: "visualizar",
-    manage: "gerenciar",
-    run: "executar",
-    generate: "gerar",
-    import: "importar"
-  };
-
-  const scopeLabel = scopeLabelMap[scope] || scope || "Módulo";
-  const actionLabel = actionLabelMap[action] || action || "acessar";
-
-  return {
-    label: `${scopeLabel} - ${actionLabel}`,
-    description: "Permissão personalizada."
-  };
-}
-
-function resolveHelpTopic(pathname: string): HelpTopicKey {
-  if (/^\/dashboard$/.test(pathname)) return "dashboard";
-  if (/^\/settings$/.test(pathname)) return "settings";
-  if (/^\/encounters$/.test(pathname)) return "encounters";
-  if (/^\/encounters\/\d+$/.test(pathname)) return "encounter-hub";
-  if (/^\/encounters\/\d+\/teams$/.test(pathname)) return "team-list";
-  if (/^\/encounters\/\d+\/circles$/.test(pathname)) return "circle-list";
-  if (/^\/encounters\/\d+\/teams\/\d+$/.test(pathname)) return "team-detail";
-  if (/^\/encounters\/\d+\/circles\/\d+$/.test(pathname)) return "circle-detail";
-  if (/^\/encounters\/\d+\/assets$/.test(pathname)) return "assets";
-  return "default";
-}
-
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -907,7 +619,6 @@ function App() {
 }
 
 function AppShell() {
-  const location = useLocation();
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem("ejc_theme");
     return saved === "dark" ? "dark" : "light";
@@ -915,9 +626,6 @@ function AppShell() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) || "");
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [permissionsCatalog, setPermissionsCatalog] = useState<string[]>(Object.values(PERMISSIONS));
-  const [roleCatalog, setRoleCatalog] = useState<RoleType[]>(["ADMIN", "EDITOR", "VISUALIZADOR"]);
-  const [teamScopeCatalog, setTeamScopeCatalog] = useState<TeamScope[]>([]);
-  const [userScopeEncounterFilter, setUserScopeEncounterFilter] = useState<number | "ALL">("ALL");
   const [authLoading, setAuthLoading] = useState(true);
   const [loginForm, setLoginForm] = useState({ email: "", senha: "" });
   const [message, setMessage] = useState("");
@@ -953,8 +661,7 @@ function AppShell() {
     senha: "",
     permissao: "EDITOR" as RoleType,
     ativo: true,
-    permissions: defaultPermissionsForRole("EDITOR"),
-    teamScopes: [] as TeamScope[]
+    permissions: defaultPermissionsForRole("EDITOR")
   });
   const [teamForm, setTeamForm] = useState<TeamFormState>(EMPTY_TEAM_FORM);
   const [memberForm, setMemberForm] = useState<MemberFormState>(EMPTY_MEMBER_FORM);
@@ -986,7 +693,7 @@ function AppShell() {
       try {
         const response = await requestJson<MeResponse>("/api/auth/me", withAuth({}, token));
         if (ignore) return;
-        setCurrentUser(normalizeUser(response.user));
+        setCurrentUser(response.user);
         setPermissionsCatalog(response.permissionsCatalog || Object.values(PERMISSIONS));
       } catch {
         if (!ignore) {
@@ -1024,7 +731,6 @@ function AppShell() {
   }
 
   function resetUserForm(role: RoleType = "EDITOR") {
-    setUserScopeEncounterFilter("ALL");
     setUserForm({
       id: 0,
       nome: "",
@@ -1032,8 +738,7 @@ function AppShell() {
       senha: "",
       permissao: role,
       ativo: true,
-      permissions: defaultPermissionsForRole(role),
-      teamScopes: []
+      permissions: defaultPermissionsForRole(role)
     });
   }
 
@@ -1078,7 +783,7 @@ function AppShell() {
       });
       sessionStorage.setItem(TOKEN_KEY, response.token);
       setToken(response.token);
-      setCurrentUser(normalizeUser(response.user));
+      setCurrentUser(response.user);
       setPermissionsCatalog(response.permissionsCatalog || Object.values(PERMISSIONS));
       setLoginForm({ email: "", senha: "" });
       setMessage("");
@@ -1114,24 +819,7 @@ function AppShell() {
   async function refreshUsers() {
     try {
       const data = await authRequest<AppUser[]>("/api/users");
-      setUsers(data.map((user) => normalizeUser(user)));
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function refreshUsersMeta() {
-    try {
-      const data = await authRequest<UserMetaResponse>("/api/users/meta");
-      const allowedRoles: RoleType[] = ["ADMIN", "EDITOR", "VISUALIZADOR"];
-      const sanitizedRoles = (Array.isArray(data.roles) ? data.roles : []).filter((role): role is RoleType =>
-        allowedRoles.includes(role as RoleType)
-      );
-      setRoleCatalog(sanitizedRoles.length > 0 ? sanitizedRoles : allowedRoles);
-      if (Array.isArray(data.permissionsCatalog) && data.permissionsCatalog.length > 0) {
-        setPermissionsCatalog(data.permissionsCatalog);
-      }
-      setTeamScopeCatalog(Array.isArray(data.teamScopeCatalog) ? data.teamScopeCatalog : []);
+      setUsers(data);
     } catch (err) {
       setError(parseError(err));
     }
@@ -1257,12 +945,7 @@ function AppShell() {
       senha: userForm.senha.trim(),
       permissao: userForm.permissao,
       ativo: userForm.ativo,
-      permissions: userForm.permissions,
-      teamScopes: (userForm.teamScopes || []).map((scope) => ({
-        teamId: scope.team_id,
-        canView: scope.can_view,
-        canManage: scope.can_manage
-      }))
+      permissions: userForm.permissions
     };
 
     try {
@@ -1285,7 +968,7 @@ function AppShell() {
       await refreshUsers();
 
       const me = await authRequest<MeResponse>("/api/auth/me");
-      setCurrentUser(normalizeUser(me.user));
+      setCurrentUser(me.user);
     } catch (err) {
       setError(parseError(err));
     }
@@ -1302,14 +985,8 @@ function AppShell() {
       permissions:
         Object.keys(user.effectivePermissions || {}).length > 0
           ? { ...user.effectivePermissions }
-          : defaultPermissionsForRole(user.permissao),
-      teamScopes: (user.teamScopes || []).map((scope) => ({
-        ...scope,
-        can_view: Boolean(scope.can_view || scope.can_manage),
-        can_manage: Boolean(scope.can_manage)
-      }))
+          : defaultPermissionsForRole(user.permissao)
     });
-    setUserScopeEncounterFilter("ALL");
   }
 
   async function handleDeleteUser(id: number) {
@@ -1323,7 +1000,7 @@ function AppShell() {
       success("Usuário removido.");
 
       const me = await authRequest<MeResponse>("/api/auth/me");
-      setCurrentUser(normalizeUser(me.user));
+      setCurrentUser(me.user);
     } catch (err) {
       setError(parseError(err));
     }
@@ -1770,9 +1447,6 @@ function AppShell() {
     cropUploading,
     currentUser,
     permissionsCatalog,
-    roleCatalog,
-    teamScopeCatalog,
-    userScopeEncounterFilter,
     can
   };
 
@@ -1784,14 +1458,12 @@ function AppShell() {
     setAssetForm,
     setPdfTitleSettings,
     setAuditFilters,
-    setUserScopeEncounterFilter,
     setImportFile,
     setCircleImportFile,
     setCrop,
     refreshEncounters,
     refreshDashboard,
     refreshUsers,
-    refreshUsersMeta,
     refreshPdfTitleSettings,
     refreshAuditLogs,
     refreshTeamList,
@@ -1828,43 +1500,6 @@ function AppShell() {
         ...prev,
         permissions: { ...prev.permissions, [permissionKey]: value }
       })),
-    setUserTeamScope: (scopeTeam: TeamScope, patch: { can_view?: boolean; can_manage?: boolean }) =>
-      setUserForm((prev) => {
-        const existing = (prev.teamScopes || []).find((scope) => scope.team_id === scopeTeam.team_id);
-        const canManage = patch.can_manage ?? existing?.can_manage ?? false;
-        const canViewBase = patch.can_view ?? existing?.can_view ?? false;
-        const canView = canViewBase || canManage;
-
-        const withoutCurrent = (prev.teamScopes || []).filter((scope) => scope.team_id !== scopeTeam.team_id);
-        if (!canView && !canManage) {
-          return {
-            ...prev,
-            teamScopes: withoutCurrent
-          };
-        }
-
-        const nextScopes = [
-          ...withoutCurrent,
-          {
-            team_id: scopeTeam.team_id,
-            encounter_id: scopeTeam.encounter_id,
-            team_nome: scopeTeam.team_nome,
-            team_tipo: scopeTeam.team_tipo,
-            encounter_nome: scopeTeam.encounter_nome,
-            can_view: canView,
-            can_manage: canManage
-          }
-        ].sort((a, b) => {
-          const encounterCmp = a.encounter_nome.localeCompare(b.encounter_nome, "pt-BR");
-          if (encounterCmp !== 0) return encounterCmp;
-          return a.team_nome.localeCompare(b.team_nome, "pt-BR");
-        });
-
-        return {
-          ...prev,
-          teamScopes: nextScopes
-        };
-      }),
     setLoginForm,
     handleLogin,
     handleLogout
@@ -1876,7 +1511,6 @@ function AppShell() {
   const canViewTeams = can(PERMISSIONS.TEAMS_VIEW);
   const canViewMembers = can(PERMISSIONS.MEMBERS_VIEW);
   const canViewAssets = can(PERMISSIONS.ASSETS_VIEW);
-  const helpTopic = useMemo(() => resolveHelpTopic(location.pathname), [location.pathname]);
 
   const defaultPath = canViewDashboard
     ? "/dashboard"
@@ -1941,9 +1575,6 @@ function AppShell() {
       </aside>
 
       <main className="content">
-        <div className="help-anchor">
-          <ContextHelpButton topicKey={helpTopic} />
-        </div>
         {(message || error) && <div className={`notice ${error ? "error" : "ok"}`}>{error || message}</div>}
 
         <Routes>
@@ -2080,42 +1711,6 @@ function AccessDeniedScreen() {
   );
 }
 
-function ContextHelpButton({ topicKey }: { topicKey: HelpTopicKey }) {
-  const [open, setOpen] = useState(false);
-  const topic = HELP_TOPICS[topicKey] || HELP_TOPICS.default;
-
-  useEffect(() => {
-    setOpen(false);
-  }, [topicKey]);
-
-  return (
-    <>
-      <button
-        type="button"
-        className="help-trigger"
-        aria-label="Ajuda desta tela"
-        title="Ajuda desta tela"
-        onClick={() => setOpen(true)}
-      >
-        ?
-      </button>
-      {open && (
-        <div className="help-backdrop" onClick={() => setOpen(false)}>
-          <div className="help-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="help-head">
-              <h3>{topic.title}</h3>
-              <button type="button" className="ghost" onClick={() => setOpen(false)}>
-                Fechar
-              </button>
-            </div>
-            <div className="help-body" dangerouslySetInnerHTML={{ __html: topic.html }} />
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 function DashboardScreen({ shell, actions }: { shell: any; actions: any }) {
   const [filterEncounterId, setFilterEncounterId] = useState<number | null>(null);
 
@@ -2175,27 +1770,8 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
   const auditPageSize = Number(shell.auditFilters?.limit || 50);
   const auditCurrentPage = Math.floor(Number(shell.auditOffset || 0) / auditPageSize) + 1;
   const auditTotalPages = Math.max(1, Math.ceil(Number(shell.auditTotal || 0) / auditPageSize));
-  const scopeEncounterOptions = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const scope of shell.teamScopeCatalog as TeamScope[]) {
-      if (!map.has(scope.encounter_id)) {
-        map.set(scope.encounter_id, scope.encounter_nome);
-      }
-    }
-    return [...map.entries()]
-      .map(([encounter_id, encounter_nome]) => ({ encounter_id, encounter_nome }))
-      .sort((a, b) => a.encounter_nome.localeCompare(b.encounter_nome, "pt-BR"));
-  }, [shell.teamScopeCatalog]);
-
-  const visibleScopeTeams = useMemo(() => {
-    if (shell.userScopeEncounterFilter === "ALL") return shell.teamScopeCatalog as TeamScope[];
-    return (shell.teamScopeCatalog as TeamScope[]).filter(
-      (scope) => scope.encounter_id === shell.userScopeEncounterFilter
-    );
-  }, [shell.teamScopeCatalog, shell.userScopeEncounterFilter]);
 
   useEffect(() => {
-    actions.refreshUsersMeta();
     actions.refreshUsers();
     actions.refreshPdfTitleSettings();
     actions.refreshAuditLogs({ ...DEFAULT_AUDIT_FILTERS }, 0);
@@ -2270,11 +1846,9 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                   value={shell.userForm.permissao}
                   onChange={(event) => actions.updateUserRole(event.target.value as RoleType)}
                 >
-                  {shell.roleCatalog.map((role: RoleType) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="EDITOR">EDITOR</option>
+                  <option value="VISUALIZADOR">VISUALIZADOR</option>
                 </select>
               </label>
               <label className="toggle">
@@ -2298,87 +1872,16 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 <h3>Permissões por funcionalidade</h3>
                 <div className="permissions-grid">
                   {shell.permissionsCatalog.map((key: string) => (
-                    <label key={key} className="toggle permission-toggle permission-item">
+                    <label key={key} className="toggle permission-toggle">
                       <input
                         type="checkbox"
                         disabled={!canManageUsers}
                         checked={Boolean(shell.userForm.permissions?.[key])}
                         onChange={(event) => actions.toggleUserPermission(key, event.target.checked)}
                       />
-                      <span className="permission-meta">
-                        <strong>{permissionUiText(key).label}</strong>
-                        <small>{permissionUiText(key).description}</small>
-                      </span>
+                      {key}
                     </label>
                   ))}
-                </div>
-              </div>
-
-              <div className="permissions-box">
-                <h3>Escopo por equipe (opcional)</h3>
-                <p className="muted">
-                  Se você marcar equipes abaixo, o usuário ficará restrito a essas equipes para visualizar/editar.
-                  Sem marcações, o acesso continua global conforme as permissões de funcionalidade.
-                </p>
-                <label>
-                  Filtrar equipes por encontro
-                  <select
-                    disabled={!canManageUsers}
-                    value={shell.userScopeEncounterFilter === "ALL" ? "" : String(shell.userScopeEncounterFilter)}
-                    onChange={(event) =>
-                      actions.setUserScopeEncounterFilter(
-                        event.target.value ? Number(event.target.value) : "ALL"
-                      )
-                    }
-                  >
-                    <option value="">Todos os encontros</option>
-                    {scopeEncounterOptions.map((item) => (
-                      <option key={item.encounter_id} value={item.encounter_id}>
-                        {item.encounter_nome}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="team-scope-grid">
-                  {visibleScopeTeams.map((scopeTeam: TeamScope) => {
-                    const selected = (shell.userForm.teamScopes as TeamScope[]).find(
-                      (scope) => scope.team_id === scopeTeam.team_id
-                    );
-                    const canView = Boolean(selected?.can_view || selected?.can_manage);
-                    const canManage = Boolean(selected?.can_manage);
-                    return (
-                      <article key={scopeTeam.team_id} className="team-scope-card">
-                        <div className="team-scope-head">
-                          <strong>{scopeTeam.team_nome}</strong>
-                          <small>
-                            {scopeTeam.encounter_nome} | {scopeTeam.team_tipo === "CIRCULO" ? "Círculo" : "Equipe"}
-                          </small>
-                        </div>
-                        <label className="toggle permission-toggle">
-                          <input
-                            type="checkbox"
-                            disabled={!canManageUsers}
-                            checked={canView}
-                            onChange={(event) =>
-                              actions.setUserTeamScope(scopeTeam, { can_view: event.target.checked })
-                            }
-                          />
-                          Visualizar esta equipe
-                        </label>
-                        <label className="toggle permission-toggle">
-                          <input
-                            type="checkbox"
-                            disabled={!canManageUsers}
-                            checked={canManage}
-                            onChange={(event) =>
-                              actions.setUserTeamScope(scopeTeam, { can_manage: event.target.checked })
-                            }
-                          />
-                          Gerenciar esta equipe
-                        </label>
-                      </article>
-                    );
-                  })}
                 </div>
               </div>
             </form>
@@ -2396,9 +1899,6 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                     {!user.ativo && <span className="chip danger">Inativo</span>}
                     <p className="muted">
                       Último login: {user.last_login_at ? formatDate(user.last_login_at) : "nunca"}
-                    </p>
-                    <p className="muted">
-                      Escopo por equipe: {Array.isArray(user.teamScopes) ? user.teamScopes.length : 0}
                     </p>
                   </div>
                   <div className="actions-row">

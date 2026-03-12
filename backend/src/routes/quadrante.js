@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { PERMISSIONS } from "../auth/permissions.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { requireAuth, requirePermission } from "../middleware/auth.js";
+import { canViewTeam, hasTeamScopeAssignments, requireAuth, requirePermission } from "../middleware/auth.js";
 import { generateQuadrantePdf, generateTeamQuadrantePdf } from "../services/quadranteService.js";
 
 const router = Router();
@@ -24,6 +24,9 @@ router.get(
     if (Number.isNaN(teamId) || teamId <= 0) {
       return res.status(400).json({ error: "teamId invalido." });
     }
+    if (!canViewTeam(req.user, teamId)) {
+      return res.status(403).json({ error: "Sem permissao para acessar esta equipe." });
+    }
 
     const { pdf, fileName } = await generateTeamQuadrantePdf(teamId);
     setPdfHeaders(res, fileName, pdf);
@@ -34,6 +37,12 @@ router.get(
 router.get(
   "/encounter/:encounterId",
   asyncHandler(async (req, res) => {
+    if (hasTeamScopeAssignments(req.user)) {
+      return res
+        .status(403)
+        .json({ error: "Usuario com escopo por equipe so pode gerar PDF parcial por equipe." });
+    }
+
     const encounterId = Number(req.params.encounterId);
     if (Number.isNaN(encounterId) || encounterId <= 0) {
       return res.status(400).json({ error: "encounterId invalido." });
@@ -48,6 +57,12 @@ router.get(
 router.get(
   "/:encounterId",
   asyncHandler(async (req, res) => {
+    if (hasTeamScopeAssignments(req.user)) {
+      return res
+        .status(403)
+        .json({ error: "Usuario com escopo por equipe so pode gerar PDF parcial por equipe." });
+    }
+
     const encounterId = Number(req.params.encounterId);
     if (Number.isNaN(encounterId) || encounterId <= 0) {
       return res.status(400).json({ error: "encounterId invalido." });

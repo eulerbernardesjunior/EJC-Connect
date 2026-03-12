@@ -132,87 +132,6 @@ function shouldPairByCargo(cargoNome, teamName = "") {
   return /\bTIOS?\b/.test(normalizedCargo);
 }
 
-const TEAM_IMPORT_PROFILE = {
-  PADRAO: "PADRAO",
-  GERAL: "GERAL",
-  SALA: "SALA",
-  TIOS_CARONA: "TIOS_CARONA"
-};
-
-function detectTeamImportProfile(teamName = "") {
-  const normalizedTeam = normalizeText(teamName).toUpperCase();
-  if (normalizedTeam.includes("TIOS CARONA")) return TEAM_IMPORT_PROFILE.TIOS_CARONA;
-  if (normalizedTeam.includes("SALA")) return TEAM_IMPORT_PROFILE.SALA;
-  if (normalizedTeam.includes("GERAL")) return TEAM_IMPORT_PROFILE.GERAL;
-  return TEAM_IMPORT_PROFILE.PADRAO;
-}
-
-function getProfileLabel(profileCode) {
-  switch (profileCode) {
-    case TEAM_IMPORT_PROFILE.TIOS_CARONA:
-      return "Tios Carona";
-    case TEAM_IMPORT_PROFILE.SALA:
-      return "Sala";
-    case TEAM_IMPORT_PROFILE.GERAL:
-      return "Geral";
-    default:
-      return "Padrão";
-  }
-}
-
-function getProfileRules(profileCode) {
-  const baseRules = [
-    "Títulos de cargo devem aparecer em linhas próprias (sem telefone).",
-    "Linhas sem cargo ativo são sinalizadas como inconsistência.",
-    "Cargos com Tio/Tios geram pareamento de casal; demais cargos geram registros individuais."
-  ];
-
-  if (profileCode === TEAM_IMPORT_PROFILE.TIOS_CARONA) {
-    return [
-      "A equipe foi identificada como Tios Carona.",
-      "Apenas cargos de Jovens Coordenadores permanecem individuais.",
-      "Todos os demais cargos são tratados como casal (duas linhas por registro)."
-    ];
-  }
-
-  if (profileCode === TEAM_IMPORT_PROFILE.SALA) {
-    return [
-      ...baseRules,
-      "Marcadores de seção (ex: AMARELO, AZUL, EQUIPE DE SALA) são ignorados e não viram membro."
-    ];
-  }
-
-  if (profileCode === TEAM_IMPORT_PROFILE.GERAL) {
-    return [
-      ...baseRules,
-      "Recomendado manter pelo menos um cargo de coordenação explícito."
-    ];
-  }
-
-  return baseRules;
-}
-
-function normalizeCargoKey(value = "") {
-  return normalizeText(value)
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isJovemCoordenadorCargo(cargoNome = "") {
-  const normalized = normalizeCargoKey(cargoNome);
-  return /\bJOVENS?\b/.test(normalized) && /\bCOORD/.test(normalized);
-}
-
-function buildDifference(severity, code, message, details = null) {
-  return {
-    severity,
-    code,
-    message,
-    details: details || {}
-  };
-}
-
 const MAX_IMPORT_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 20000;
 const PARSE_TIMEOUT_MS = 15000;
@@ -316,97 +235,30 @@ async function ensureEncounterAndTeam(encounterId, teamId) {
   return team.rows[0];
 }
 
-function parseMembersRows({ encounterId, teamId, team, rows }) {
+export async function importMembersFromFile({ encounterId, teamId, filePath }) {
+  const team = await ensureEncounterAndTeam(encounterId, teamId);
+  const rows = await parseSpreadsheetRows(filePath);
   let columnIndexes = { nome: 0, telefone: 1, paroquia: 2 };
+
   let cargoAtual = null;
   let bufferCasal = null;
   let pairingMode = false;
-
-  const profileCode = detectTeamImportProfile(team.nome);
-  const rules = getProfileRules(profileCode);
-  const differences = [];
-  const errors = [];
-  const warnings = [];
+  const erros = [];
   const records = [];
 
-  const ignoredLabels = [];
-  const colorLabelsDetected = new Set();
-  let tableHeadersDetected = 0;
-  let memberRowsDetected = 0;
-  let rowsWithoutCargo = 0;
+  const flushBufferAsIndividual = () => {
+    if (!bufferCasal) return;
 
-  const cargoStatsByKey = new Map();
-
-  const ensureCargoStats = (cargoNome, pairMode) => {
-    const key = normalizeCargoKey(cargoNome || "");
-    if (!cargoStatsByKey.has(key)) {
-      cargoStatsByKey.set(key, {
-        key,
-        cargo: cargoNome || "Sem Cargo",
-        pairMode: Boolean(pairMode),
-        memberRows: 0,
-        registrosPrevistos: 0,
-        casaisPrevistos: 0,
-        individuaisPrevistos: 0,
-        sobrasCasal: 0
-      });
-      return cargoStatsByKey.get(key);
-    }
-
-    const stats = cargoStatsByKey.get(key);
-    if (stats.pairMode !== Boolean(pairMode)) {
-      differences.push(
-        buildDifference(
-          "warning",
-          "CARGO_MODE_CONFLICT",
-          `Cargo '${stats.cargo}' detectado com modos de pareamento diferentes no arquivo.`,
-          { cargo: stats.cargo }
-        )
-      );
-    }
-    return stats;
-  };
-
-  const registerRecord = (record, isCasal) => {
-    records.push(record);
-    const stats = ensureCargoStats(record.cargoNome, shouldPairByCargo(record.cargoNome, team.nome));
-    stats.registrosPrevistos += 1;
-    if (isCasal) {
-      stats.casaisPrevistos += 1;
-    } else {
-      stats.individuaisPrevistos += 1;
-    }
-  };
-
-  const flushBufferAsIndividual = (lineHint = null, becauseExpectedCouple = false) => {
-    if (!bufferCasal || !cargoAtual) return;
-
-    registerRecord(
-      {
-        encontroId: encounterId,
-        equipeId: teamId,
-        cargoNome: cargoAtual,
-        nomePrincipal: bufferCasal.nome,
-        nomeSecundario: null,
-        telefonePrincipal: bufferCasal.telefone,
-        telefoneSecundario: null,
-        paroquia: bufferCasal.paroquia
-      },
-      false
-    );
-
-    if (becauseExpectedCouple) {
-      const stats = ensureCargoStats(cargoAtual, true);
-      stats.sobrasCasal += 1;
-      const warningMessage = `Linha ${lineHint || bufferCasal.line}: casal incompleto no cargo '${cargoAtual}'. O último nome foi importado como individual.`;
-      warnings.push(warningMessage);
-      differences.push(
-        buildDifference("warning", "INCOMPLETE_COUPLE_PAIR", warningMessage, {
-          cargo: cargoAtual,
-          line: lineHint || bufferCasal.line
-        })
-      );
-    }
+    records.push({
+      encontroId: encounterId,
+      equipeId: teamId,
+      cargoNome: cargoAtual,
+      nomePrincipal: bufferCasal.nome,
+      nomeSecundario: null,
+      telefonePrincipal: bufferCasal.telefone,
+      telefoneSecundario: null,
+      paroquia: bufferCasal.paroquia
+    });
 
     bufferCasal = null;
   };
@@ -414,31 +266,25 @@ function parseMembersRows({ encounterId, teamId, team, rows }) {
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i] || [];
 
-    if (isBlankRow(row)) continue;
+    if (isBlankRow(row)) {
+      continue;
+    }
 
     columnIndexes = maybeShiftColumnIndexes(row, columnIndexes);
 
     if (shouldIgnoreStandaloneLabel(row)) {
-      const label = cleanName(row[columnIndexes.nome]) || cleanName(row[0]) || "";
-      const normalizedLabel = normalizeText(label || "").toUpperCase();
-      if (CIRCLE_COLOR_LABELS.has(normalizedLabel)) {
-        colorLabelsDetected.add(normalizedLabel);
-      }
-      if (label) ignoredLabels.push(label);
       continue;
     }
 
     if (isTableHeader(row)) {
-      tableHeadersDetected += 1;
       columnIndexes = resolveMemberColumnIndexes(row);
       continue;
     }
 
     if (isCargoTitle(row, columnIndexes)) {
-      flushBufferAsIndividual(i + 1, pairingMode);
+      flushBufferAsIndividual();
       cargoAtual = cleanName(row[columnIndexes.nome]);
       pairingMode = shouldPairByCargo(cargoAtual, team.nome);
-      ensureCargoStats(cargoAtual, pairingMode);
       continue;
     }
 
@@ -446,199 +292,56 @@ function parseMembersRows({ encounterId, teamId, team, rows }) {
     const telefone = cleanPhone(row[columnIndexes.telefone]);
     const paroquia = cleanName(row[columnIndexes.paroquia]);
 
-    if (!nomeBruto) continue;
-
-    memberRowsDetected += 1;
-    if (!cargoAtual) {
-      rowsWithoutCargo += 1;
-      errors.push(`Linha ${i + 1}: Membro '${nomeBruto}' sem cargo definido.`);
+    if (!nomeBruto) {
       continue;
     }
 
-    const currentCargoStats = ensureCargoStats(cargoAtual, pairingMode);
-    currentCargoStats.memberRows += 1;
+    if (!cargoAtual) {
+      erros.push(`Linha ${i + 1}: Membro '${nomeBruto}' sem cargo definido.`);
+      continue;
+    }
 
-    if (pairingMode) {
+    const nome = nomeBruto;
+    const isPairCandidate = pairingMode;
+
+    if (isPairCandidate) {
       if (!bufferCasal) {
         bufferCasal = {
-          nome: nomeBruto,
+          nome,
           telefone,
           paroquia,
           line: i + 1
         };
       } else {
-        registerRecord(
-          {
-            encontroId: encounterId,
-            equipeId: teamId,
-            cargoNome: cargoAtual,
-            nomePrincipal: bufferCasal.nome,
-            nomeSecundario: nomeBruto,
-            telefonePrincipal: bufferCasal.telefone,
-            telefoneSecundario: telefone,
-            paroquia: bufferCasal.paroquia || paroquia
-          },
-          true
-        );
-        bufferCasal = null;
-      }
-    } else {
-      flushBufferAsIndividual(i + 1, false);
-      registerRecord(
-        {
+        records.push({
           encontroId: encounterId,
           equipeId: teamId,
           cargoNome: cargoAtual,
-          nomePrincipal: nomeBruto,
-          nomeSecundario: null,
-          telefonePrincipal: telefone,
-          telefoneSecundario: null,
-          paroquia
-        },
-        false
-      );
-    }
-  }
-
-  flushBufferAsIndividual(rows.length, pairingMode);
-
-  const cargos = [...cargoStatsByKey.values()]
-    .sort((a, b) => a.cargo.localeCompare(b.cargo, "pt-BR"))
-    .map((item) => ({
-      cargo: item.cargo,
-      mode: item.pairMode ? "CASAL" : "INDIVIDUAL",
-      memberRows: item.memberRows,
-      registrosPrevistos: item.registrosPrevistos,
-      casaisPrevistos: item.casaisPrevistos,
-      individuaisPrevistos: item.individuaisPrevistos,
-      sobrasCasal: item.sobrasCasal
-    }));
-
-  if (rowsWithoutCargo > 0) {
-    differences.push(
-      buildDifference(
-        "error",
-        "ROWS_WITHOUT_CARGO",
-        `${rowsWithoutCargo} linha(s) de membro sem cargo válido foram detectadas.`,
-        { rowsWithoutCargo }
-      )
-    );
-  }
-
-  if (profileCode === TEAM_IMPORT_PROFILE.TIOS_CARONA) {
-    const jovensCoordenadores = cargos.filter((item) => isJovemCoordenadorCargo(item.cargo));
-    if (jovensCoordenadores.length === 0) {
-      differences.push(
-        buildDifference(
-          "info",
-          "NO_JOVEM_COORDENADOR",
-          "Nenhum cargo de Jovens Coordenadores foi detectado neste arquivo."
-        )
-      );
-    }
-
-    const individuaisForaRegra = cargos.filter(
-      (item) => item.mode === "INDIVIDUAL" && !isJovemCoordenadorCargo(item.cargo)
-    );
-    for (const diffCargo of individuaisForaRegra) {
-      differences.push(
-        buildDifference(
-          "warning",
-          "TIOS_CARONA_INDIVIDUAL_OUTSIDE_RULE",
-          `Cargo '${diffCargo.cargo}' foi lido como individual, mas o perfil Tios Carona costuma exigir casal.`,
-          { cargo: diffCargo.cargo }
-        )
-      );
-    }
-  }
-
-  if (profileCode === TEAM_IMPORT_PROFILE.SALA) {
-    if (colorLabelsDetected.size > 0) {
-      differences.push(
-        buildDifference(
-          "info",
-          "SALA_SECTION_MARKERS",
-          `Marcadores de seção detectados e ignorados: ${[...colorLabelsDetected].join(", ")}.`
-        )
-      );
+          nomePrincipal: bufferCasal.nome,
+          nomeSecundario: nome,
+          telefonePrincipal: bufferCasal.telefone,
+          telefoneSecundario: telefone,
+          paroquia: bufferCasal.paroquia || paroquia
+        });
+        bufferCasal = null;
+      }
+      continue;
     } else {
-      differences.push(
-        buildDifference(
-          "info",
-          "SALA_NO_SECTION_MARKERS",
-          "Nenhum marcador de seção (AMARELO, AZUL etc.) foi detectado no arquivo de Sala."
-        )
-      );
+      flushBufferAsIndividual();
+      records.push({
+        encontroId: encounterId,
+        equipeId: teamId,
+        cargoNome: cargoAtual,
+        nomePrincipal: nomeBruto,
+        nomeSecundario: null,
+        telefonePrincipal: telefone,
+        telefoneSecundario: null,
+        paroquia
+      });
     }
   }
 
-  if (profileCode === TEAM_IMPORT_PROFILE.GERAL) {
-    const hasCoord = cargos.some((item) => normalizeCargoKey(item.cargo).includes("COORD"));
-    if (!hasCoord) {
-      differences.push(
-        buildDifference(
-          "warning",
-          "GERAL_WITHOUT_COORDENACAO",
-          "Nenhum cargo de coordenação foi identificado no arquivo da equipe Geral."
-        )
-      );
-    }
-  }
-
-  if (records.length === 0) {
-    differences.push(
-      buildDifference(
-        "error",
-        "NO_RECORDS_DETECTED",
-        "Nenhum membro válido foi detectado para importação com as regras atuais."
-      )
-    );
-  }
-
-  const casaisPrevistos = records.filter((record) => Boolean(record.nomeSecundario)).length;
-  const individuaisPrevistos = records.length - casaisPrevistos;
-
-  return {
-    records,
-    diagnostics: {
-      team: {
-        id: team.id,
-        nome: team.nome,
-        tipo: team.tipo,
-        profileCode,
-        profileLabel: getProfileLabel(profileCode),
-        rules
-      },
-      summary: {
-        linhasLidas: rows.length,
-        cabecalhosDetectados: tableHeadersDetected,
-        labelsIgnorados: ignoredLabels.length,
-        linhasComMembros: memberRowsDetected,
-        linhasSemCargo: rowsWithoutCargo,
-        cargosDetectados: cargos.length,
-        registrosPrevistos: records.length,
-        casaisPrevistos,
-        individuaisPrevistos
-      },
-      cargos,
-      differences,
-      errors,
-      warnings
-    }
-  };
-}
-
-export async function validateMembersImportFile({ encounterId, teamId, filePath }) {
-  const team = await ensureEncounterAndTeam(encounterId, teamId);
-  const rows = await parseSpreadsheetRows(filePath);
-  const { diagnostics } = parseMembersRows({ encounterId, teamId, team, rows });
-  return diagnostics;
-}
-
-export async function importMembersFromFile({ encounterId, teamId, filePath }) {
-  const team = await ensureEncounterAndTeam(encounterId, teamId);
-  const rows = await parseSpreadsheetRows(filePath);
-  const { records, diagnostics } = parseMembersRows({ encounterId, teamId, team, rows });
+  flushBufferAsIndividual();
 
   const client = await pool.connect();
   const membrosCriados = [];
@@ -692,9 +395,8 @@ export async function importMembersFromFile({ encounterId, teamId, filePath }) {
     total,
     individuais,
     casais,
-    erros: diagnostics.errors || [],
-    totalLinhasArquivo: rows.length,
-    diagnostico: diagnostics
+    erros,
+    totalLinhasArquivo: rows.length
   };
 }
 
