@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import dayjs from "dayjs";
+import "dayjs/locale/pt-br.js";
 import { pool } from "../db/pool.js";
 import { env } from "../config/env.js";
 
@@ -213,6 +214,46 @@ function formatPhones(member) {
   return phones.length > 0 ? phones.join(" / ") : "-";
 }
 
+function capitalizeFirst(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function parseEncounterDate(value) {
+  if (!value) return null;
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed : null;
+}
+
+function formatDatePtBrLong(dateValue) {
+  const parsed = parseEncounterDate(dateValue);
+  if (!parsed) return "";
+  return `${parsed.format("DD")} de ${capitalizeFirst(parsed.locale("pt-br").format("MMMM"))} de ${parsed.format("YYYY")}`;
+}
+
+function formatEncounterPeriodPtBr(encounter) {
+  const start = parseEncounterDate(encounter?.data_inicio || encounter?.data_encontro);
+  const end = parseEncounterDate(encounter?.data_fim || encounter?.data_encontro || encounter?.data_inicio);
+
+  if (!start && !end) return "";
+  if (!start || !end) {
+    return formatDatePtBrLong(start || end);
+  }
+
+  return `${start.format("DD")} de ${capitalizeFirst(start.locale("pt-br").format("MMMM"))} a ${end.format("DD")} de ${capitalizeFirst(end.locale("pt-br").format("MMMM"))} de ${end.format("YYYY")}`;
+}
+
+function formatFooter(encounter) {
+  const encounterLabel = escapeHtml(encounter.nome || encounter.tema || "");
+  const periodLabel = escapeHtml(formatEncounterPeriodPtBr(encounter));
+
+  if (encounterLabel && periodLabel) {
+    return `${encounterLabel} • ${periodLabel}`;
+  }
+  return encounterLabel || periodLabel || "-";
+}
+
 function renderCircleContent(encounter, team, members) {
   const leadersTios = [];
   const leadersJovens = [];
@@ -242,7 +283,7 @@ function renderCircleContent(encounter, team, members) {
   }
 
   participantes.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  const footer = `${escapeHtml(encounter.nome || encounter.tema || "")} • ${dayjs(encounter.data_inicio || encounter.data_encontro).format("DD/MM/YYYY")}`;
+  const footer = formatFooter(encounter);
 
   const renderLeader = (leader) => `
     <div class="leader-card">
@@ -292,7 +333,7 @@ function renderCircleContent(encounter, team, members) {
 
 function renderTeamContent(encounter, team, members, pdfTitleSettings) {
   const grouped = groupMembersByCargo(members);
-  const footer = `${escapeHtml(encounter.nome || encounter.tema || "")} • ${dayjs(encounter.data_inicio || encounter.data_encontro).format("DD/MM/YYYY")}`;
+  const footer = formatFooter(encounter);
   const teamPhoto = mediaForPdf(team.foto_url);
   const titleArt = mediaForPdf(team.titulo_arte_url);
   const titleMode = normalizePdfTitleMode(pdfTitleSettings?.mode);
@@ -469,7 +510,7 @@ async function loadEncounterBundle(encounterId) {
 
 async function loadTeamBundle(teamId) {
   const teamResult = await pool.query(
-    "SELECT e.*, en.nome AS encontro_nome, en.tema AS encontro_tema, en.data_inicio, en.data_encontro FROM equipes e JOIN encontros en ON en.id = e.encontro_id WHERE e.id = $1",
+    "SELECT e.*, en.nome AS encontro_nome, en.tema AS encontro_tema, en.data_inicio, en.data_fim, en.data_encontro FROM equipes e JOIN encontros en ON en.id = e.encontro_id WHERE e.id = $1",
     [teamId]
   );
   if (teamResult.rowCount === 0) {
@@ -547,6 +588,7 @@ function teamHtml(bundle) {
     nome: bundle.team.encontro_nome,
     tema: bundle.team.encontro_tema,
     data_inicio: bundle.team.data_inicio,
+    data_fim: bundle.team.data_fim,
     data_encontro: bundle.team.data_encontro
   };
   const content = (() => {
