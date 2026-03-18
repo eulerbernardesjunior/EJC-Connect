@@ -287,12 +287,15 @@ function normalizePdfVisualTemplates(rawValue) {
     ];
   }
 
-  const unique = new Set();
-  const templates = rawTemplates
-    .slice(0, MAX_TEMPLATES)
+  const unique = new Set([DEFAULT_TEMPLATE_ID]);
+  const dynamicTemplates = rawTemplates
     .map((item, index) => {
       const entry = item && typeof item === "object" ? item : {};
-      const baseId = normalizeTemplateId(entry.id, index);
+      const normalizedEntryId = normalizeTemplateId(entry.id, index);
+      if (normalizedEntryId === DEFAULT_TEMPLATE_ID) {
+        return null;
+      }
+      const baseId = normalizedEntryId;
       let id = baseId;
       let suffix = 2;
       while (unique.has(id)) {
@@ -306,15 +309,18 @@ function normalizePdfVisualTemplates(rawValue) {
         nome: normalizeTemplateName(entry.nome, `Template ${index + 1}`),
         config: normalizePdfVisualConfig(entry.config)
       };
-    });
+    })
+    .filter(Boolean)
+    .slice(0, Math.max(0, MAX_TEMPLATES - 1));
 
-  if (templates.length === 0) {
-    templates.push({
+  const templates = [
+    {
       id: DEFAULT_TEMPLATE_ID,
       nome: "Padrão do sistema",
       config: { ...DEFAULT_PDF_VISUAL_CONFIG }
-    });
-  }
+    },
+    ...dynamicTemplates
+  ];
 
   const preferredActive = String(raw.active_template_id || "").trim();
   const active_template_id = templates.some((template) => template.id === preferredActive)

@@ -527,16 +527,18 @@ const DEFAULT_PDF_VISUAL_CONFIG: PdfVisualConfig = {
   caixa_lideranca_raio_px: 8
 };
 
+function buildDefaultPdfVisualTemplate(): PdfVisualTemplate {
+  return {
+    id: "default",
+    nome: "Padrão do sistema",
+    config: { ...DEFAULT_PDF_VISUAL_CONFIG }
+  };
+}
+
 const EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS: PdfVisualTemplatesSettings = {
   active_template_id: "default",
   published_template_id: "default",
-  templates: [
-    {
-      id: "default",
-      nome: "Padrão do sistema",
-      config: { ...DEFAULT_PDF_VISUAL_CONFIG }
-    }
-  ],
+  templates: [buildDefaultPdfVisualTemplate()],
   history: []
 };
 
@@ -783,14 +785,22 @@ function normalizePdfVisualConfigClient(raw?: Partial<PdfVisualConfig> | null): 
 function normalizePdfVisualTemplatesSettingsClient(raw?: Partial<PdfVisualTemplatesSettings> | null): PdfVisualTemplatesSettings {
   const source = raw || {};
   const templatesRaw = Array.isArray(source.templates) ? source.templates : [];
-  const templates =
-    templatesRaw.length > 0
-      ? templatesRaw.map((template, index) => ({
-          id: normalizeTemplateId(template.id, index === 0 ? "default" : `template-${index + 1}`),
-          nome: String(template.nome || "").trim() || `Template ${index + 1}`,
-          config: normalizePdfVisualConfigClient(template.config)
-        }))
-      : [...EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS.templates];
+  const seenTemplateIds = new Set<string>(["default"]);
+  const dynamicTemplates = templatesRaw
+    .map((template, index) => ({
+      id: normalizeTemplateId(template.id, `template-${index + 1}`),
+      nome: String(template.nome || "").trim() || `Template ${index + 1}`,
+      config: normalizePdfVisualConfigClient(template.config)
+    }))
+    .filter((template) => {
+      if (!template.id || template.id === "default" || seenTemplateIds.has(template.id)) {
+        return false;
+      }
+      seenTemplateIds.add(template.id);
+      return true;
+    });
+
+  const templates = [buildDefaultPdfVisualTemplate(), ...dynamicTemplates];
 
   const active = templates.find((template) => template.id === source.active_template_id) || templates[0];
   const published = templates.find((template) => template.id === source.published_template_id) || active;
@@ -1730,6 +1740,7 @@ function AppShell() {
   function updateActivePdfVisualConfig(patch: Partial<PdfVisualConfig>) {
     setPdfVisualTemplatesSettings((prev) => {
       const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      if (next.active_template_id === "default") return next;
       const index = next.templates.findIndex((template) => template.id === next.active_template_id);
       if (index < 0) return next;
       const updatedTemplate: PdfVisualTemplate = {
@@ -1751,6 +1762,7 @@ function AppShell() {
   function renameActivePdfTemplate(name: string) {
     setPdfVisualTemplatesSettings((prev) => {
       const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      if (next.active_template_id === "default") return next;
       const index = next.templates.findIndex((template) => template.id === next.active_template_id);
       if (index < 0) return next;
       const templates = [...next.templates];
@@ -1797,19 +1809,38 @@ function AppShell() {
     createPdfVisualTemplate();
   }
 
-  function publishActivePdfTemplate() {
-    setPdfVisualTemplatesSettings((prev) => {
-      const next = normalizePdfVisualTemplatesSettingsClient(prev);
-      const activeTemplate = getActivePdfTemplate(next);
-      if (!activeTemplate) return next;
-      return pushTemplateHistory(
+  async function persistPdfTemplates(
+    nextSettings: PdfVisualTemplatesSettings,
+    successMessage: string
+  ): Promise<PdfVisualTemplatesSettings> {
+    const payload = normalizePdfVisualTemplatesSettingsClient(nextSettings);
+    const data = await authRequest<PdfVisualTemplatesSettings>("/api/settings/pdf-templates", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const normalizedData = normalizePdfVisualTemplatesSettingsClient(data);
+    setPdfVisualTemplatesSettings(normalizedData);
+    success(successMessage);
+    return normalizedData;
+  }
+
+  async function publishActivePdfTemplate() {
+    try {
+      const current = normalizePdfVisualTemplatesSettingsClient(pdfVisualTemplatesSettings);
+      const activeTemplate = getActivePdfTemplate(current);
+      if (!activeTemplate) return;
+      const next = pushTemplateHistory(
         {
-          ...next,
+          ...current,
           published_template_id: activeTemplate.id
         },
         createTemplateHistoryEntry("PUBLISH", activeTemplate)
       );
-    });
+      await persistPdfTemplates(next, "Template publicado e aplicado para as prévias/PDF.");
+    } catch (err) {
+      setError(parseError(err));
+    }
   }
 
   function rollbackTemplateByHistory(historyId: string) {
@@ -1844,6 +1875,7 @@ function AppShell() {
     setPdfVisualTemplatesSettings((prev) => {
       const next = normalizePdfVisualTemplatesSettingsClient(prev);
       if (next.templates.length <= 1) return next;
+      if (next.active_template_id === "default") return next;
       const filtered = next.templates.filter((template) => template.id !== next.active_template_id);
       const nextActive = filtered[0].id;
       const nextPublished =
@@ -1860,19 +1892,13 @@ function AppShell() {
   async function handleSavePdfVisualTemplates(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      const payload = normalizePdfVisualTemplatesSettingsClient(
+      const nextSettings = normalizePdfVisualTemplatesSettingsClient(
         pushTemplateHistory(
           normalizePdfVisualTemplatesSettingsClient(pdfVisualTemplatesSettings),
           createTemplateHistoryEntry("SAVE", getActivePdfTemplate(pdfVisualTemplatesSettings))
         )
       );
-      const data = await authRequest<PdfVisualTemplatesSettings>("/api/settings/pdf-templates", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      setPdfVisualTemplatesSettings(normalizePdfVisualTemplatesSettingsClient(data));
-      success("Template visual do PDF salvo.");
+      await persistPdfTemplates(nextSettings, "Template visual do PDF salvo.");
     } catch (err) {
       setError(parseError(err));
     }
@@ -2568,6 +2594,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
   }, [shell.teamScopeCatalog, shell.userScopeEncounterFilter]);
   const activePdfTemplate = shell.activePdfVisualTemplate as PdfVisualTemplate | undefined;
   const activePdfConfig = activePdfTemplate?.config || DEFAULT_PDF_VISUAL_CONFIG;
+  const isDefaultPdfTemplate = activePdfTemplate?.id === "default";
 
   useEffect(() => {
     actions.refreshUsersMeta();
@@ -2894,7 +2921,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 Nome do template
                 <input
                   value={activePdfTemplate?.nome || ""}
-                  disabled={!canManageUsers || !activePdfTemplate}
+                  disabled={!canManageUsers || !activePdfTemplate || isDefaultPdfTemplate}
                   onChange={(event) => actions.renameActivePdfTemplate(event.target.value)}
                 />
               </label>
@@ -2908,7 +2935,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 <button
                   type="button"
                   className="ghost"
-                  disabled={!canManageUsers || shell.pdfVisualTemplatesSettings.templates.length <= 1}
+                  disabled={!canManageUsers || shell.pdfVisualTemplatesSettings.templates.length <= 1 || isDefaultPdfTemplate}
                   onClick={() => actions.deleteActivePdfVisualTemplate()}
                 >
                   Excluir template
@@ -2923,6 +2950,9 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                   )?.nome || "-"}
                 </span>
               </div>
+              <p className="muted">
+                O template <strong>Padrão do sistema</strong> é fixo e sempre permanece disponível como fallback.
+              </p>
             </div>
 
             <div className="pdf-template-grid">

@@ -185,15 +185,30 @@ function normalizePdfVisualTemplates(rawValue) {
     templates = [{ id: DEFAULT_TEMPLATE_ID, nome: "Padrão do sistema", config: DEFAULT_PDF_VISUAL_CONFIG }];
   }
 
-  const normalizedTemplates = templates.map((item, index) => {
-    const id = String(item?.id || "").trim() || (index === 0 ? DEFAULT_TEMPLATE_ID : `template-${index + 1}`);
-    const nome = String(item?.nome || "").trim() || `Template ${index + 1}`;
-    return {
-      id,
-      nome,
-      config: normalizePdfVisualConfig(item?.config)
-    };
-  });
+  const seenIds = new Set([DEFAULT_TEMPLATE_ID]);
+  const dynamicTemplates = templates
+    .map((item, index) => {
+      const id = String(item?.id || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      if (!id || id === DEFAULT_TEMPLATE_ID || seenIds.has(id)) return null;
+      seenIds.add(id);
+      const nome = String(item?.nome || "").trim() || `Template ${index + 1}`;
+      return {
+        id,
+        nome,
+        config: normalizePdfVisualConfig(item?.config)
+      };
+    })
+    .filter(Boolean);
+
+  const normalizedTemplates = [
+    { id: DEFAULT_TEMPLATE_ID, nome: "Padrão do sistema", config: { ...DEFAULT_PDF_VISUAL_CONFIG } },
+    ...dynamicTemplates
+  ];
 
   const activeTemplateIdRaw = String(raw.active_template_id || "").trim();
   const activeTemplate =
