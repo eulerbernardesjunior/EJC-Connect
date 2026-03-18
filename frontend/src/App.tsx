@@ -44,6 +44,52 @@ type PdfTitleSettings = {
   font_url: string | null;
 };
 
+type PdfPhotoShape = "SQUARE" | "ROUNDED" | "CIRCLE" | "PASSPORT_3X4";
+type PdfTableModel = "COMPACT" | "STANDARD" | "COMFORTABLE";
+type PdfLeadershipStyle = "SOFT" | "BORDERED" | "MINIMAL";
+
+type PdfVisualConfig = {
+  foto_equipe_largura_mm: number;
+  foto_equipe_altura_mm: number;
+  foto_lider_largura_mm: number;
+  foto_lider_altura_mm: number;
+  foto_participante_largura_px: number;
+  foto_participante_altura_px: number;
+  formato_foto_circulo: PdfPhotoShape;
+  modelo_tabela_equipe: PdfTableModel;
+  fonte_base: string;
+  fonte_slogan: string;
+  margem_topo_mm: number;
+  margem_direita_mm: number;
+  margem_inferior_mm: number;
+  margem_esquerda_mm: number;
+  rodape_ativo: boolean;
+  rodape_altura_mm: number;
+  rodape_cor_fundo: string;
+  rodape_cor_texto: string;
+  rodape_maiusculo: boolean;
+  marca_dagua_ativa: boolean;
+  marca_dagua_texto: string;
+  marca_dagua_opacidade: number;
+  marca_dagua_tamanho_pt: number;
+  marca_dagua_cor: string;
+  caixa_lideranca_estilo: PdfLeadershipStyle;
+  caixa_lideranca_cor_fundo: string;
+  caixa_lideranca_cor_borda: string;
+  caixa_lideranca_raio_px: number;
+};
+
+type PdfVisualTemplate = {
+  id: string;
+  nome: string;
+  config: PdfVisualConfig;
+};
+
+type PdfVisualTemplatesSettings = {
+  active_template_id: string;
+  templates: PdfVisualTemplate[];
+};
+
 type Member = {
   id: number;
   encontro_id: number;
@@ -454,10 +500,11 @@ const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
   settings: {
     title: "Ajuda - Configurações",
     html: `
-      <p>A tela de configurações possui 3 abas:</p>
+      <p>A tela de configurações possui 4 abas:</p>
       <ul>
         <li><strong>Usuários:</strong> cadastro, status e permissões por funcionalidade.</li>
         <li><strong>Título PDF:</strong> fonte padrão, fonte customizada ou arte por equipe.</li>
+        <li><strong>Templates PDF:</strong> ajustes visuais (fotos, tabela, fontes, margens, rodapé, marca d'água e caixa de liderança).</li>
         <li><strong>Auditoria:</strong> rastreio das ações por usuário e encontro.</li>
       </ul>
       <p><strong>Permissões:</strong> use descrições amigáveis para liberar apenas o necessário.</p>
@@ -580,6 +627,48 @@ const EMPTY_PDF_TITLE_SETTINGS: PdfTitleSettings = {
   font_url: null
 };
 
+const DEFAULT_PDF_VISUAL_CONFIG: PdfVisualConfig = {
+  foto_equipe_largura_mm: 150,
+  foto_equipe_altura_mm: 100,
+  foto_lider_largura_mm: 18,
+  foto_lider_altura_mm: 18,
+  foto_participante_largura_px: 30,
+  foto_participante_altura_px: 30,
+  formato_foto_circulo: "ROUNDED",
+  modelo_tabela_equipe: "STANDARD",
+  fonte_base: "Montserrat, Arial, sans-serif",
+  fonte_slogan: "Caveat, cursive",
+  margem_topo_mm: 8,
+  margem_direita_mm: 8,
+  margem_inferior_mm: 35,
+  margem_esquerda_mm: 8,
+  rodape_ativo: true,
+  rodape_altura_mm: 12,
+  rodape_cor_fundo: "#333333",
+  rodape_cor_texto: "#FFFFFF",
+  rodape_maiusculo: true,
+  marca_dagua_ativa: false,
+  marca_dagua_texto: "",
+  marca_dagua_opacidade: 0.08,
+  marca_dagua_tamanho_pt: 44,
+  marca_dagua_cor: "#7A1F3D",
+  caixa_lideranca_estilo: "SOFT",
+  caixa_lideranca_cor_fundo: "#F9F9F9",
+  caixa_lideranca_cor_borda: "#DDDDDD",
+  caixa_lideranca_raio_px: 8
+};
+
+const EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS: PdfVisualTemplatesSettings = {
+  active_template_id: "default",
+  templates: [
+    {
+      id: "default",
+      nome: "Padrão do sistema",
+      config: { ...DEFAULT_PDF_VISUAL_CONFIG }
+    }
+  ]
+};
+
 const DEFAULT_AUDIT_FILTERS: AuditFilters = {
   encounterId: null,
   userId: null,
@@ -679,6 +768,146 @@ function displayEncounterName(encounter: Encounter) {
 
 function parseError(error: unknown) {
   return error instanceof Error ? error.message : "Erro inesperado.";
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeHexColor(value: unknown, fallback: string) {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : fallback;
+}
+
+function normalizeTemplateId(value: unknown, fallback: string) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+}
+
+function normalizePdfVisualConfigClient(raw?: Partial<PdfVisualConfig> | null): PdfVisualConfig {
+  const input = raw || {};
+  const photoShapeCandidates: PdfPhotoShape[] = ["SQUARE", "ROUNDED", "CIRCLE", "PASSPORT_3X4"];
+  const tableModelCandidates: PdfTableModel[] = ["COMPACT", "STANDARD", "COMFORTABLE"];
+  const leadershipCandidates: PdfLeadershipStyle[] = ["SOFT", "BORDERED", "MINIMAL"];
+  const photoShape = photoShapeCandidates.includes(input.formato_foto_circulo as PdfPhotoShape)
+    ? (input.formato_foto_circulo as PdfPhotoShape)
+    : DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo;
+  const tableModel = tableModelCandidates.includes(input.modelo_tabela_equipe as PdfTableModel)
+    ? (input.modelo_tabela_equipe as PdfTableModel)
+    : DEFAULT_PDF_VISUAL_CONFIG.modelo_tabela_equipe;
+  const leadershipStyle = leadershipCandidates.includes(input.caixa_lideranca_estilo as PdfLeadershipStyle)
+    ? (input.caixa_lideranca_estilo as PdfLeadershipStyle)
+    : DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_estilo;
+
+  return {
+    foto_equipe_largura_mm: clampNumber(
+      input.foto_equipe_largura_mm,
+      80,
+      190,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_equipe_largura_mm
+    ),
+    foto_equipe_altura_mm: clampNumber(
+      input.foto_equipe_altura_mm,
+      50,
+      250,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_equipe_altura_mm
+    ),
+    foto_lider_largura_mm: clampNumber(
+      input.foto_lider_largura_mm,
+      10,
+      40,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_lider_largura_mm
+    ),
+    foto_lider_altura_mm: clampNumber(
+      input.foto_lider_altura_mm,
+      10,
+      50,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_lider_altura_mm
+    ),
+    foto_participante_largura_px: clampNumber(
+      input.foto_participante_largura_px,
+      18,
+      80,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_participante_largura_px
+    ),
+    foto_participante_altura_px: clampNumber(
+      input.foto_participante_altura_px,
+      18,
+      100,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_participante_altura_px
+    ),
+    formato_foto_circulo: photoShape,
+    modelo_tabela_equipe: tableModel,
+    fonte_base: String(input.fonte_base || DEFAULT_PDF_VISUAL_CONFIG.fonte_base).slice(0, 120),
+    fonte_slogan: String(input.fonte_slogan || DEFAULT_PDF_VISUAL_CONFIG.fonte_slogan).slice(0, 120),
+    margem_topo_mm: clampNumber(input.margem_topo_mm, 0, 25, DEFAULT_PDF_VISUAL_CONFIG.margem_topo_mm),
+    margem_direita_mm: clampNumber(input.margem_direita_mm, 0, 25, DEFAULT_PDF_VISUAL_CONFIG.margem_direita_mm),
+    margem_inferior_mm: clampNumber(input.margem_inferior_mm, 8, 45, DEFAULT_PDF_VISUAL_CONFIG.margem_inferior_mm),
+    margem_esquerda_mm: clampNumber(input.margem_esquerda_mm, 0, 25, DEFAULT_PDF_VISUAL_CONFIG.margem_esquerda_mm),
+    rodape_ativo: Boolean(input.rodape_ativo),
+    rodape_altura_mm: clampNumber(input.rodape_altura_mm, 8, 22, DEFAULT_PDF_VISUAL_CONFIG.rodape_altura_mm),
+    rodape_cor_fundo: normalizeHexColor(input.rodape_cor_fundo, DEFAULT_PDF_VISUAL_CONFIG.rodape_cor_fundo),
+    rodape_cor_texto: normalizeHexColor(input.rodape_cor_texto, DEFAULT_PDF_VISUAL_CONFIG.rodape_cor_texto),
+    rodape_maiusculo: input.rodape_maiusculo !== false,
+    marca_dagua_ativa: Boolean(input.marca_dagua_ativa),
+    marca_dagua_texto: String(input.marca_dagua_texto || "").slice(0, 80),
+    marca_dagua_opacidade: clampNumber(
+      input.marca_dagua_opacidade,
+      0.02,
+      0.35,
+      DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_opacidade
+    ),
+    marca_dagua_tamanho_pt: clampNumber(
+      input.marca_dagua_tamanho_pt,
+      18,
+      120,
+      DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_tamanho_pt
+    ),
+    marca_dagua_cor: normalizeHexColor(input.marca_dagua_cor, DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_cor),
+    caixa_lideranca_estilo: leadershipStyle,
+    caixa_lideranca_cor_fundo: normalizeHexColor(
+      input.caixa_lideranca_cor_fundo,
+      DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_cor_fundo
+    ),
+    caixa_lideranca_cor_borda: normalizeHexColor(
+      input.caixa_lideranca_cor_borda,
+      DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_cor_borda
+    ),
+    caixa_lideranca_raio_px: clampNumber(
+      input.caixa_lideranca_raio_px,
+      0,
+      40,
+      DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_raio_px
+    )
+  };
+}
+
+function normalizePdfVisualTemplatesSettingsClient(raw?: Partial<PdfVisualTemplatesSettings> | null): PdfVisualTemplatesSettings {
+  const source = raw || {};
+  const templatesRaw = Array.isArray(source.templates) ? source.templates : [];
+  const templates =
+    templatesRaw.length > 0
+      ? templatesRaw.map((template, index) => ({
+          id: normalizeTemplateId(template.id, index === 0 ? "default" : `template-${index + 1}`),
+          nome: String(template.nome || "").trim() || `Template ${index + 1}`,
+          config: normalizePdfVisualConfigClient(template.config)
+        }))
+      : [...EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS.templates];
+
+  const active = templates.find((template) => template.id === source.active_template_id) || templates[0];
+  return {
+    active_template_id: active.id,
+    templates
+  };
 }
 
 function normalizeUser(user: AppUser): AppUser {
@@ -960,6 +1189,13 @@ function AppShell() {
   const [memberForm, setMemberForm] = useState<MemberFormState>(EMPTY_MEMBER_FORM);
   const [assetForm, setAssetForm] = useState<AssetFormState>({ ...EMPTY_ASSET_FORM });
   const [pdfTitleSettings, setPdfTitleSettings] = useState<PdfTitleSettings>({ ...EMPTY_PDF_TITLE_SETTINGS });
+  const [pdfVisualTemplatesSettings, setPdfVisualTemplatesSettings] = useState<PdfVisualTemplatesSettings>({
+    ...EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS,
+    templates: EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS.templates.map((template) => ({
+      ...template,
+      config: { ...template.config }
+    }))
+  });
   const [importFile, setImportFile] = useState<File | null>(null);
   const [circleImportFile, setCircleImportFile] = useState<File | null>(null);
 
@@ -1011,6 +1247,7 @@ function AppShell() {
     refreshEncounters();
     refreshDashboard();
     refreshPdfTitleSettings();
+    refreshPdfVisualTemplatesSettings();
     if (can(PERMISSIONS.USERS_VIEW)) {
       refreshAuditLogs({ ...DEFAULT_AUDIT_FILTERS }, 0);
     }
@@ -1043,6 +1280,13 @@ function AppShell() {
     setToken("");
     setCurrentUser(null);
     setPdfTitleSettings({ ...EMPTY_PDF_TITLE_SETTINGS });
+    setPdfVisualTemplatesSettings({
+      ...EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS,
+      templates: EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS.templates.map((template) => ({
+        ...template,
+        config: { ...template.config }
+      }))
+    });
     setAuditLogs([]);
     setAuditTotal(0);
     setAuditOffset(0);
@@ -1144,6 +1388,15 @@ function AppShell() {
         mode: data.mode || "SYSTEM_FONT",
         font_url: data.font_url || null
       });
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function refreshPdfVisualTemplatesSettings() {
+    try {
+      const data = await authRequest<PdfVisualTemplatesSettings>("/api/settings/pdf-templates");
+      setPdfVisualTemplatesSettings(normalizePdfVisualTemplatesSettingsClient(data));
     } catch (err) {
       setError(parseError(err));
     }
@@ -1523,6 +1776,117 @@ function AppShell() {
     }
   }
 
+  function getActivePdfTemplate(settings = pdfVisualTemplatesSettings) {
+    return (
+      settings.templates.find((template) => template.id === settings.active_template_id) || settings.templates[0]
+    );
+  }
+
+  function setActivePdfVisualTemplate(templateId: string) {
+    setPdfVisualTemplatesSettings((prev) => {
+      const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      if (!next.templates.some((template) => template.id === templateId)) {
+        return next;
+      }
+      return {
+        ...next,
+        active_template_id: templateId
+      };
+    });
+  }
+
+  function updateActivePdfVisualConfig(patch: Partial<PdfVisualConfig>) {
+    setPdfVisualTemplatesSettings((prev) => {
+      const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      const index = next.templates.findIndex((template) => template.id === next.active_template_id);
+      if (index < 0) return next;
+      const updatedTemplate: PdfVisualTemplate = {
+        ...next.templates[index],
+        config: normalizePdfVisualConfigClient({
+          ...next.templates[index].config,
+          ...patch
+        })
+      };
+      const templates = [...next.templates];
+      templates[index] = updatedTemplate;
+      return {
+        ...next,
+        templates
+      };
+    });
+  }
+
+  function renameActivePdfTemplate(name: string) {
+    setPdfVisualTemplatesSettings((prev) => {
+      const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      const index = next.templates.findIndex((template) => template.id === next.active_template_id);
+      if (index < 0) return next;
+      const templates = [...next.templates];
+      templates[index] = {
+        ...templates[index],
+        nome: name.slice(0, 60)
+      };
+      return { ...next, templates };
+    });
+  }
+
+  function createPdfVisualTemplate() {
+    setPdfVisualTemplatesSettings((prev) => {
+      const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      const activeTemplate = getActivePdfTemplate(next);
+      const baseId = normalizeTemplateId(
+        `${activeTemplate?.id || "template"}-${next.templates.length + 1}`,
+        `template-${next.templates.length + 1}`
+      );
+      let id = baseId;
+      let suffix = 2;
+      while (next.templates.some((template) => template.id === id)) {
+        id = `${baseId}-${suffix}`;
+        suffix += 1;
+      }
+      const templateName = `Template ${next.templates.length + 1}`;
+      return {
+        active_template_id: id,
+        templates: [
+          ...next.templates,
+          {
+            id,
+            nome: templateName,
+            config: normalizePdfVisualConfigClient(activeTemplate?.config || DEFAULT_PDF_VISUAL_CONFIG)
+          }
+        ]
+      };
+    });
+  }
+
+  function deleteActivePdfVisualTemplate() {
+    setPdfVisualTemplatesSettings((prev) => {
+      const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      if (next.templates.length <= 1) return next;
+      const filtered = next.templates.filter((template) => template.id !== next.active_template_id);
+      return {
+        active_template_id: filtered[0].id,
+        templates: filtered
+      };
+    });
+  }
+
+  async function handleSavePdfVisualTemplates(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      const payload = normalizePdfVisualTemplatesSettingsClient(pdfVisualTemplatesSettings);
+      const data = await authRequest<PdfVisualTemplatesSettings>("/api/settings/pdf-templates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      setPdfVisualTemplatesSettings(normalizePdfVisualTemplatesSettingsClient(data));
+      success("Template visual do PDF salvo.");
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
   async function handleImportCircles(encounterId: number) {
     if (!circleImportFile) return;
     const formData = new FormData();
@@ -1764,6 +2128,8 @@ function AppShell() {
     memberForm,
     assetForm,
     pdfTitleSettings,
+    pdfVisualTemplatesSettings,
+    activePdfVisualTemplate: getActivePdfTemplate(),
     importFile,
     circleImportFile,
     crop,
@@ -1783,6 +2149,7 @@ function AppShell() {
     setMemberForm,
     setAssetForm,
     setPdfTitleSettings,
+    setPdfVisualTemplatesSettings,
     setAuditFilters,
     setUserScopeEncounterFilter,
     setImportFile,
@@ -1793,6 +2160,7 @@ function AppShell() {
     refreshUsers,
     refreshUsersMeta,
     refreshPdfTitleSettings,
+    refreshPdfVisualTemplatesSettings,
     refreshAuditLogs,
     refreshTeamList,
     refreshMembers,
@@ -1805,6 +2173,12 @@ function AppShell() {
     handleDeleteUser,
     handleSavePdfTitleMode,
     handleUploadPdfTitleFont,
+    handleSavePdfVisualTemplates,
+    setActivePdfVisualTemplate,
+    updateActivePdfVisualConfig,
+    renameActivePdfTemplate,
+    createPdfVisualTemplate,
+    deleteActivePdfVisualTemplate,
     handleSaveTeam,
     handleDeleteTeam,
     handleSaveMember,
@@ -2153,7 +2527,7 @@ function DashboardScreen({ shell, actions }: { shell: any; actions: any }) {
 }
 
 function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
-  type SettingsTab = "USERS" | "PDF_TITLE" | "AUDIT";
+  type SettingsTab = "USERS" | "PDF_TITLE" | "PDF_TEMPLATE" | "AUDIT";
   const canManageUsers = shell.can(PERMISSIONS.USERS_MANAGE);
   const [tab, setTab] = useState<SettingsTab>("USERS");
   const auditActions = ["CREATE", "UPDATE", "DELETE", "UPLOAD", "IMPORT"];
@@ -2168,6 +2542,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
     "CIRCULOS",
     "SETTINGS_PDF_TITLE",
     "SETTINGS_PDF_TITLE_FONT",
+    "SETTINGS_PDF_TEMPLATE",
     "EQUIPE_TITULO_ARTE",
     "MEMBRO_FOTO"
   ];
@@ -2193,11 +2568,14 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
       (scope) => scope.encounter_id === shell.userScopeEncounterFilter
     );
   }, [shell.teamScopeCatalog, shell.userScopeEncounterFilter]);
+  const activePdfTemplate = shell.activePdfVisualTemplate as PdfVisualTemplate | undefined;
+  const activePdfConfig = activePdfTemplate?.config || DEFAULT_PDF_VISUAL_CONFIG;
 
   useEffect(() => {
     actions.refreshUsersMeta();
     actions.refreshUsers();
     actions.refreshPdfTitleSettings();
+    actions.refreshPdfVisualTemplatesSettings();
     actions.refreshAuditLogs({ ...DEFAULT_AUDIT_FILTERS }, 0);
   }, []);
 
@@ -2218,6 +2596,13 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
             type="button"
           >
             Título PDF
+          </button>
+          <button
+            className={`settings-tab ${tab === "PDF_TEMPLATE" ? "active" : ""}`.trim()}
+            onClick={() => setTab("PDF_TEMPLATE")}
+            type="button"
+          >
+            Templates PDF
           </button>
           <button
             className={`settings-tab ${tab === "AUDIT" ? "active" : ""}`.trim()}
@@ -2483,6 +2868,434 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
 
             <div className="actions-row">
               <button type="submit" disabled={!canManageUsers}>Salvar modo</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {tab === "PDF_TEMPLATE" && (
+        <div className="panel">
+          <h2>Templates visuais do PDF</h2>
+          <form className="grid-form" onSubmit={actions.handleSavePdfVisualTemplates}>
+            <div className="pdf-template-head">
+              <label>
+                Template ativo
+                <select
+                  value={shell.pdfVisualTemplatesSettings.active_template_id}
+                  disabled={!canManageUsers}
+                  onChange={(event) => actions.setActivePdfVisualTemplate(event.target.value)}
+                >
+                  {shell.pdfVisualTemplatesSettings.templates.map((template: PdfVisualTemplate) => (
+                    <option key={template.id} value={template.id}>
+                      {template.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Nome do template
+                <input
+                  value={activePdfTemplate?.nome || ""}
+                  disabled={!canManageUsers || !activePdfTemplate}
+                  onChange={(event) => actions.renameActivePdfTemplate(event.target.value)}
+                />
+              </label>
+              <div className="actions-row">
+                <button type="button" className="ghost" disabled={!canManageUsers} onClick={() => actions.createPdfVisualTemplate()}>
+                  Novo template
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={!canManageUsers || shell.pdfVisualTemplatesSettings.templates.length <= 1}
+                  onClick={() => actions.deleteActivePdfVisualTemplate()}
+                >
+                  Excluir template
+                </button>
+              </div>
+            </div>
+
+            <div className="pdf-template-grid">
+              <fieldset className="pdf-template-group">
+                <legend>Fotos</legend>
+                <div className="grid-form three">
+                  <label>
+                    Foto equipe largura (mm)
+                    <input
+                      type="number"
+                      min={80}
+                      max={190}
+                      value={activePdfConfig.foto_equipe_largura_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          foto_equipe_largura_mm: Number(event.target.value || 0)
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Foto equipe altura (mm)
+                    <input
+                      type="number"
+                      min={50}
+                      max={250}
+                      value={activePdfConfig.foto_equipe_altura_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          foto_equipe_altura_mm: Number(event.target.value || 0)
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Formato da foto no círculo
+                    <select
+                      value={activePdfConfig.formato_foto_circulo}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          formato_foto_circulo: event.target.value as PdfPhotoShape
+                        })
+                      }
+                    >
+                      <option value="SQUARE">Quadrado</option>
+                      <option value="ROUNDED">Bordas arredondadas</option>
+                      <option value="CIRCLE">Círculo</option>
+                      <option value="PASSPORT_3X4">3x4</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="grid-form three">
+                  <label>
+                    Foto liderança largura (mm)
+                    <input
+                      type="number"
+                      min={10}
+                      max={40}
+                      value={activePdfConfig.foto_lider_largura_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          foto_lider_largura_mm: Number(event.target.value || 0)
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Foto liderança altura (mm)
+                    <input
+                      type="number"
+                      min={10}
+                      max={50}
+                      value={activePdfConfig.foto_lider_altura_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          foto_lider_altura_mm: Number(event.target.value || 0)
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Largura foto participante (px)
+                    <input
+                      type="number"
+                      min={18}
+                      max={80}
+                      value={activePdfConfig.foto_participante_largura_px}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          foto_participante_largura_px: Number(event.target.value || 0)
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="grid-form three">
+                  <label>
+                    Altura foto participante (px)
+                    <input
+                      type="number"
+                      min={18}
+                      max={100}
+                      value={activePdfConfig.foto_participante_altura_px}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          foto_participante_altura_px: Number(event.target.value || 0)
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset className="pdf-template-group">
+                <legend>Tabela e fontes</legend>
+                <div className="grid-form two">
+                  <label>
+                    Modelo de tabela das equipes
+                    <select
+                      value={activePdfConfig.modelo_tabela_equipe}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          modelo_tabela_equipe: event.target.value as PdfTableModel
+                        })
+                      }
+                    >
+                      <option value="COMPACT">Compacta</option>
+                      <option value="STANDARD">Padrão</option>
+                      <option value="COMFORTABLE">Confortável</option>
+                    </select>
+                  </label>
+                  <label>
+                    Fonte base
+                    <input
+                      value={activePdfConfig.fonte_base}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ fonte_base: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Fonte slogan
+                    <input
+                      value={activePdfConfig.fonte_slogan}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ fonte_slogan: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset className="pdf-template-group">
+                <legend>Margens e rodapé</legend>
+                <div className="grid-form three">
+                  <label>
+                    Margem topo (mm)
+                    <input
+                      type="number"
+                      min={0}
+                      max={25}
+                      value={activePdfConfig.margem_topo_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ margem_topo_mm: Number(event.target.value || 0) })}
+                    />
+                  </label>
+                  <label>
+                    Margem direita (mm)
+                    <input
+                      type="number"
+                      min={0}
+                      max={25}
+                      value={activePdfConfig.margem_direita_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ margem_direita_mm: Number(event.target.value || 0) })}
+                    />
+                  </label>
+                  <label>
+                    Margem inferior (mm)
+                    <input
+                      type="number"
+                      min={8}
+                      max={45}
+                      value={activePdfConfig.margem_inferior_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ margem_inferior_mm: Number(event.target.value || 0) })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="grid-form three">
+                  <label>
+                    Margem esquerda (mm)
+                    <input
+                      type="number"
+                      min={0}
+                      max={25}
+                      value={activePdfConfig.margem_esquerda_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ margem_esquerda_mm: Number(event.target.value || 0) })
+                      }
+                    />
+                  </label>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(activePdfConfig.rodape_ativo)}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ rodape_ativo: event.target.checked })}
+                    />
+                    Rodapé ativo
+                  </label>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(activePdfConfig.rodape_maiusculo)}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ rodape_maiusculo: event.target.checked })}
+                    />
+                    Rodapé em maiúsculo
+                  </label>
+                </div>
+                <div className="grid-form three">
+                  <label>
+                    Altura rodapé (mm)
+                    <input
+                      type="number"
+                      min={8}
+                      max={22}
+                      value={activePdfConfig.rodape_altura_mm}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ rodape_altura_mm: Number(event.target.value || 0) })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Cor fundo rodapé
+                    <input
+                      value={activePdfConfig.rodape_cor_fundo}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ rodape_cor_fundo: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Cor texto rodapé
+                    <input
+                      value={activePdfConfig.rodape_cor_texto}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ rodape_cor_texto: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset className="pdf-template-group">
+                <legend>Marca d'água e liderança</legend>
+                <div className="grid-form three">
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(activePdfConfig.marca_dagua_ativa)}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ marca_dagua_ativa: event.target.checked })}
+                    />
+                    Marca d'água ativa
+                  </label>
+                  <label>
+                    Texto da marca d'água
+                    <input
+                      value={activePdfConfig.marca_dagua_texto}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ marca_dagua_texto: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Opacidade
+                    <input
+                      type="number"
+                      min={0.02}
+                      max={0.35}
+                      step={0.01}
+                      value={activePdfConfig.marca_dagua_opacidade}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ marca_dagua_opacidade: Number(event.target.value || 0) })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="grid-form three">
+                  <label>
+                    Tamanho marca d'água (pt)
+                    <input
+                      type="number"
+                      min={18}
+                      max={120}
+                      value={activePdfConfig.marca_dagua_tamanho_pt}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ marca_dagua_tamanho_pt: Number(event.target.value || 0) })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Cor marca d'água
+                    <input
+                      value={activePdfConfig.marca_dagua_cor}
+                      disabled={!canManageUsers}
+                      onChange={(event) => actions.updateActivePdfVisualConfig({ marca_dagua_cor: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Estilo caixa de liderança
+                    <select
+                      value={activePdfConfig.caixa_lideranca_estilo}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          caixa_lideranca_estilo: event.target.value as PdfLeadershipStyle
+                        })
+                      }
+                    >
+                      <option value="SOFT">Suave</option>
+                      <option value="BORDERED">Bordada</option>
+                      <option value="MINIMAL">Minimalista</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="grid-form three">
+                  <label>
+                    Cor de fundo liderança
+                    <input
+                      value={activePdfConfig.caixa_lideranca_cor_fundo}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ caixa_lideranca_cor_fundo: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Cor de borda liderança
+                    <input
+                      value={activePdfConfig.caixa_lideranca_cor_borda}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ caixa_lideranca_cor_borda: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Raio da caixa (px)
+                    <input
+                      type="number"
+                      min={0}
+                      max={40}
+                      value={activePdfConfig.caixa_lideranca_raio_px}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({ caixa_lideranca_raio_px: Number(event.target.value || 0) })
+                      }
+                    />
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+
+            <p className="muted">
+              Ajuste os campos e clique em <strong>Salvar template</strong>. O template ativo passa a ser usado na próxima geração do quadrante.
+            </p>
+
+            <div className="actions-row">
+              <button type="submit" disabled={!canManageUsers}>
+                Salvar template
+              </button>
             </div>
           </form>
         </div>

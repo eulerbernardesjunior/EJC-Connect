@@ -18,6 +18,182 @@ function normalize(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function clampNumber(raw, min, max, fallback) {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeBoolean(raw, fallback) {
+  if (raw === true || raw === false) return raw;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return fallback;
+}
+
+function normalizeHexColor(raw, fallback) {
+  const value = String(raw || "").trim();
+  return HEX_COLOR_REGEX.test(value) ? value.toUpperCase() : fallback;
+}
+
+function normalizeFontFamily(raw, fallback) {
+  const value = String(raw || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9\s,'"_\-\.]/g, "");
+  if (!value) return fallback;
+  return value.slice(0, 120);
+}
+
+function sanitizeText(raw, fallback = "", maxLength = 80) {
+  const value = String(raw ?? "").trim();
+  if (!value) return fallback;
+  return value.slice(0, maxLength);
+}
+
+function normalizePhotoShape(raw) {
+  const value = normalize(raw);
+  return PHOTO_SHAPES.has(value) ? value : DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo;
+}
+
+function normalizeTableModel(raw) {
+  const value = normalize(raw);
+  return TABLE_MODELS.has(value) ? value : DEFAULT_PDF_VISUAL_CONFIG.modelo_tabela_equipe;
+}
+
+function normalizeLeadershipStyle(raw) {
+  const value = normalize(raw);
+  return LEADERSHIP_STYLES.has(value) ? value : DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_estilo;
+}
+
+function normalizePdfVisualConfig(rawConfig = {}) {
+  const raw = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+  return {
+    foto_equipe_largura_mm: clampNumber(
+      raw.foto_equipe_largura_mm,
+      80,
+      190,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_equipe_largura_mm
+    ),
+    foto_equipe_altura_mm: clampNumber(
+      raw.foto_equipe_altura_mm,
+      50,
+      250,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_equipe_altura_mm
+    ),
+    foto_lider_largura_mm: clampNumber(
+      raw.foto_lider_largura_mm,
+      10,
+      40,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_lider_largura_mm
+    ),
+    foto_lider_altura_mm: clampNumber(
+      raw.foto_lider_altura_mm,
+      10,
+      50,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_lider_altura_mm
+    ),
+    foto_participante_largura_px: clampNumber(
+      raw.foto_participante_largura_px,
+      18,
+      80,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_participante_largura_px
+    ),
+    foto_participante_altura_px: clampNumber(
+      raw.foto_participante_altura_px,
+      18,
+      100,
+      DEFAULT_PDF_VISUAL_CONFIG.foto_participante_altura_px
+    ),
+    formato_foto_circulo: normalizePhotoShape(raw.formato_foto_circulo),
+    modelo_tabela_equipe: normalizeTableModel(raw.modelo_tabela_equipe),
+    fonte_base: normalizeFontFamily(raw.fonte_base, DEFAULT_PDF_VISUAL_CONFIG.fonte_base),
+    fonte_slogan: normalizeFontFamily(raw.fonte_slogan, DEFAULT_PDF_VISUAL_CONFIG.fonte_slogan),
+    margem_topo_mm: clampNumber(raw.margem_topo_mm, 0, 25, DEFAULT_PDF_VISUAL_CONFIG.margem_topo_mm),
+    margem_direita_mm: clampNumber(raw.margem_direita_mm, 0, 25, DEFAULT_PDF_VISUAL_CONFIG.margem_direita_mm),
+    margem_inferior_mm: clampNumber(
+      raw.margem_inferior_mm,
+      8,
+      45,
+      DEFAULT_PDF_VISUAL_CONFIG.margem_inferior_mm
+    ),
+    margem_esquerda_mm: clampNumber(raw.margem_esquerda_mm, 0, 25, DEFAULT_PDF_VISUAL_CONFIG.margem_esquerda_mm),
+    rodape_ativo: normalizeBoolean(raw.rodape_ativo, DEFAULT_PDF_VISUAL_CONFIG.rodape_ativo),
+    rodape_altura_mm: clampNumber(raw.rodape_altura_mm, 8, 22, DEFAULT_PDF_VISUAL_CONFIG.rodape_altura_mm),
+    rodape_cor_fundo: normalizeHexColor(raw.rodape_cor_fundo, DEFAULT_PDF_VISUAL_CONFIG.rodape_cor_fundo),
+    rodape_cor_texto: normalizeHexColor(raw.rodape_cor_texto, DEFAULT_PDF_VISUAL_CONFIG.rodape_cor_texto),
+    rodape_maiusculo: normalizeBoolean(raw.rodape_maiusculo, DEFAULT_PDF_VISUAL_CONFIG.rodape_maiusculo),
+    marca_dagua_ativa: normalizeBoolean(raw.marca_dagua_ativa, DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_ativa),
+    marca_dagua_texto: sanitizeText(raw.marca_dagua_texto, DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_texto, 80),
+    marca_dagua_opacidade: clampNumber(
+      raw.marca_dagua_opacidade,
+      0.02,
+      0.35,
+      DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_opacidade
+    ),
+    marca_dagua_tamanho_pt: clampNumber(
+      raw.marca_dagua_tamanho_pt,
+      18,
+      120,
+      DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_tamanho_pt
+    ),
+    marca_dagua_cor: normalizeHexColor(raw.marca_dagua_cor, DEFAULT_PDF_VISUAL_CONFIG.marca_dagua_cor),
+    caixa_lideranca_estilo: normalizeLeadershipStyle(raw.caixa_lideranca_estilo),
+    caixa_lideranca_cor_fundo: normalizeHexColor(
+      raw.caixa_lideranca_cor_fundo,
+      DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_cor_fundo
+    ),
+    caixa_lideranca_cor_borda: normalizeHexColor(
+      raw.caixa_lideranca_cor_borda,
+      DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_cor_borda
+    ),
+    caixa_lideranca_raio_px: clampNumber(
+      raw.caixa_lideranca_raio_px,
+      0,
+      40,
+      DEFAULT_PDF_VISUAL_CONFIG.caixa_lideranca_raio_px
+    )
+  };
+}
+
+function normalizePdfVisualTemplates(rawValue) {
+  const raw = rawValue && typeof rawValue === "object" ? rawValue : {};
+  let templates = Array.isArray(raw.templates) ? raw.templates : [];
+
+  const looksLikeLegacySingleConfig =
+    templates.length === 0 &&
+    (raw.formato_foto_circulo ||
+      raw.modelo_tabela_equipe ||
+      raw.margem_topo_mm !== undefined ||
+      raw.rodape_ativo !== undefined);
+
+  if (looksLikeLegacySingleConfig) {
+    templates = [{ id: DEFAULT_TEMPLATE_ID, nome: "Padrão do sistema", config: raw }];
+  }
+
+  if (templates.length === 0) {
+    templates = [{ id: DEFAULT_TEMPLATE_ID, nome: "Padrão do sistema", config: DEFAULT_PDF_VISUAL_CONFIG }];
+  }
+
+  const normalizedTemplates = templates.map((item, index) => {
+    const id = String(item?.id || "").trim() || (index === 0 ? DEFAULT_TEMPLATE_ID : `template-${index + 1}`);
+    const nome = String(item?.nome || "").trim() || `Template ${index + 1}`;
+    return {
+      id,
+      nome,
+      config: normalizePdfVisualConfig(item?.config)
+    };
+  });
+
+  const activeTemplateIdRaw = String(raw.active_template_id || "").trim();
+  const activeTemplate =
+    normalizedTemplates.find((item) => item.id === activeTemplateIdRaw) || normalizedTemplates[0];
+
+  return {
+    active_template_id: activeTemplate?.id || DEFAULT_TEMPLATE_ID,
+    templates: normalizedTemplates
+  };
+}
+
 const MEDIA_CACHE = new Map();
 const MIME_BY_EXT = {
   ".png": "image/png",
@@ -33,6 +209,43 @@ const MIME_BY_EXT = {
 };
 const MEDIA_CACHE_MAX_ENTRIES = 500;
 const PDF_TITLE_SETTINGS_KEY = "pdf_team_title";
+const PDF_VISUAL_TEMPLATES_KEY = "pdf_visual_templates";
+const DEFAULT_TEMPLATE_ID = "default";
+const PHOTO_SHAPES = new Set(["SQUARE", "ROUNDED", "CIRCLE", "PASSPORT_3X4"]);
+const TABLE_MODELS = new Set(["COMPACT", "STANDARD", "COMFORTABLE"]);
+const LEADERSHIP_STYLES = new Set(["SOFT", "BORDERED", "MINIMAL"]);
+const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+
+const DEFAULT_PDF_VISUAL_CONFIG = Object.freeze({
+  foto_equipe_largura_mm: 150,
+  foto_equipe_altura_mm: 100,
+  foto_lider_largura_mm: 18,
+  foto_lider_altura_mm: 18,
+  foto_participante_largura_px: 30,
+  foto_participante_altura_px: 30,
+  formato_foto_circulo: "ROUNDED",
+  modelo_tabela_equipe: "STANDARD",
+  fonte_base: "Montserrat, Arial, sans-serif",
+  fonte_slogan: "Caveat, cursive",
+  margem_topo_mm: 8,
+  margem_direita_mm: 8,
+  margem_inferior_mm: 35,
+  margem_esquerda_mm: 8,
+  rodape_ativo: true,
+  rodape_altura_mm: 12,
+  rodape_cor_fundo: "#333333",
+  rodape_cor_texto: "#FFFFFF",
+  rodape_maiusculo: true,
+  marca_dagua_ativa: false,
+  marca_dagua_texto: "",
+  marca_dagua_opacidade: 0.08,
+  marca_dagua_tamanho_pt: 44,
+  marca_dagua_cor: "#7A1F3D",
+  caixa_lideranca_estilo: "SOFT",
+  caixa_lideranca_cor_fundo: "#F9F9F9",
+  caixa_lideranca_cor_borda: "#DDDDDD",
+  caixa_lideranca_raio_px: 8
+});
 
 function getCachedMedia(key) {
   if (!MEDIA_CACHE.has(key)) {
@@ -170,6 +383,25 @@ async function loadPdfTitleSettings() {
   };
 }
 
+async function loadPdfVisualTemplatesSettings() {
+  const result = await pool.query("SELECT valor FROM app_settings WHERE chave = $1 LIMIT 1", [PDF_VISUAL_TEMPLATES_KEY]);
+  const raw = result.rowCount > 0 ? result.rows[0].valor || {} : {};
+  return normalizePdfVisualTemplates(raw);
+}
+
+function resolvePdfVisualConfig(pdfVisualTemplates) {
+  const normalized = normalizePdfVisualTemplates(pdfVisualTemplates || {});
+  const active = normalized.templates.find((template) => template.id === normalized.active_template_id);
+  return normalizePdfVisualConfig(active?.config || normalized.templates[0]?.config || DEFAULT_PDF_VISUAL_CONFIG);
+}
+
+function escapeCssContent(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, " ");
+}
+
 function groupMembersByCargo(members) {
   const map = new Map();
   for (const member of members) {
@@ -254,7 +486,45 @@ function formatFooter(encounter) {
   return encounterLabel || periodLabel || "-";
 }
 
-function renderCircleContent(encounter, team, members) {
+function resolveCirclePhotoGeometry(pdfVisualConfig) {
+  const shape = normalizePhotoShape(pdfVisualConfig.formato_foto_circulo);
+
+  let leaderWidth = Number(pdfVisualConfig.foto_lider_largura_mm);
+  let leaderHeight = Number(pdfVisualConfig.foto_lider_altura_mm);
+  let participantWidth = Number(pdfVisualConfig.foto_participante_largura_px);
+  let participantHeight = Number(pdfVisualConfig.foto_participante_altura_px);
+
+  if (shape === "SQUARE" || shape === "ROUNDED" || shape === "CIRCLE") {
+    const leaderSide = Math.min(leaderWidth, leaderHeight);
+    const participantSide = Math.min(participantWidth, participantHeight);
+    leaderWidth = leaderSide;
+    leaderHeight = leaderSide;
+    participantWidth = participantSide;
+    participantHeight = participantSide;
+  } else if (shape === "PASSPORT_3X4") {
+    leaderWidth = Math.max(8, Math.round((leaderHeight * 3) / 4));
+    participantWidth = Math.max(14, Math.round((participantHeight * 3) / 4));
+  }
+
+  const borderRadius = (() => {
+    if (shape === "CIRCLE") return "999px";
+    if (shape === "ROUNDED") return "6px";
+    if (shape === "PASSPORT_3X4") return "4px";
+    return "0px";
+  })();
+
+  return {
+    shape,
+    leaderWidth,
+    leaderHeight,
+    participantWidth,
+    participantHeight,
+    borderRadius
+  };
+}
+
+function renderCircleContent(encounter, team, members, pdfVisualConfig) {
+  const circleShapeClass = `circle-shape-${normalizePhotoShape(pdfVisualConfig?.formato_foto_circulo).toLowerCase()}`;
   const leadersTios = [];
   const leadersJovens = [];
   const participantes = [];
@@ -308,7 +578,7 @@ function renderCircleContent(encounter, team, members) {
   `;
 
   return `
-    <section class="page page-break">
+    <section class="page page-break ${circleShapeClass}">
       <div class="footer-bar">${footer}</div>
       <header class="circulo-header">
         <h1 style="color:${escapeHtml(team.cor_hex || "#333")}">${escapeHtml(team.nome)}</h1>
@@ -331,12 +601,14 @@ function renderCircleContent(encounter, team, members) {
   `;
 }
 
-function renderTeamContent(encounter, team, members, pdfTitleSettings) {
+function renderTeamContent(encounter, team, members, pdfTitleSettings, pdfVisualConfig) {
   const grouped = groupMembersByCargo(members);
   const footer = formatFooter(encounter);
   const teamPhoto = mediaForPdf(team.foto_url);
   const titleArt = mediaForPdf(team.titulo_arte_url);
   const titleMode = normalizePdfTitleMode(pdfTitleSettings?.mode);
+  const tableMode = normalizeTableModel(pdfVisualConfig?.modelo_tabela_equipe);
+  const tableModeClass = `team-table-model-${tableMode.toLowerCase()}`;
   const canUseTitleArt = titleMode === "TEAM_ART" && Boolean(titleArt);
   const titleClass = titleMode === "CUSTOM_FONT" ? "team-title team-title-custom-font" : "team-title";
   const hasTeamPhoto = Boolean(teamPhoto);
@@ -448,7 +720,7 @@ function renderTeamContent(encounter, team, members, pdfTitleSettings) {
     .slice(1)
     .map(
       (pageChunks) => `
-        <section class="page page-break team-page ${pageLayoutClass} team-page-continued">
+        <section class="page page-break team-page ${pageLayoutClass} ${tableModeClass} team-page-continued">
           <div class="footer-bar">${footer}</div>
           <div class="team-page-body team-page-body-continued">
             ${renderTables(pageChunks)}
@@ -459,7 +731,7 @@ function renderTeamContent(encounter, team, members, pdfTitleSettings) {
     .join("");
 
   return `
-    <section class="page page-break team-page ${pageLayoutClass}">
+    <section class="page page-break team-page ${pageLayoutClass} ${tableModeClass}">
       <div class="footer-bar">${footer}</div>
       <div class="team-page-body">
         <header class="equipe-header">
@@ -486,11 +758,12 @@ async function loadEncounterBundle(encounterId) {
     throw error;
   }
 
-  const [teamsResult, membersResult, assetsResult, pdfTitleSettings] = await Promise.all([
+  const [teamsResult, membersResult, assetsResult, pdfTitleSettings, pdfVisualTemplates] = await Promise.all([
     pool.query("SELECT * FROM equipes WHERE encontro_id = $1 ORDER BY tipo ASC, ordem ASC, nome ASC", [encounterId]),
     pool.query("SELECT * FROM membros WHERE encontro_id = $1 ORDER BY equipe_id ASC, cargo_nome ASC, nome_principal ASC", [encounterId]),
     pool.query("SELECT * FROM encontro_assets WHERE encontro_id = $1 ORDER BY ordem ASC, id ASC", [encounterId]),
-    loadPdfTitleSettings()
+    loadPdfTitleSettings(),
+    loadPdfVisualTemplatesSettings()
   ]);
 
   const membersByTeam = new Map();
@@ -504,7 +777,8 @@ async function loadEncounterBundle(encounterId) {
     teams: teamsResult.rows,
     membersByTeam,
     assets: assetsResult.rows,
-    pdfTitleSettings
+    pdfTitleSettings,
+    pdfVisualTemplates
   };
 }
 
@@ -519,16 +793,18 @@ async function loadTeamBundle(teamId) {
     throw error;
   }
 
-  const [membersResult, pdfTitleSettings] = await Promise.all([
+  const [membersResult, pdfTitleSettings, pdfVisualTemplates] = await Promise.all([
     pool.query("SELECT * FROM membros WHERE equipe_id = $1 ORDER BY cargo_nome ASC, nome_principal ASC", [teamId]),
-    loadPdfTitleSettings()
+    loadPdfTitleSettings(),
+    loadPdfVisualTemplatesSettings()
   ]);
 
-  return { team: teamResult.rows[0], members: membersResult.rows, pdfTitleSettings };
+  return { team: teamResult.rows[0], members: membersResult.rows, pdfTitleSettings, pdfVisualTemplates };
 }
 
 function encounterHtml(bundle) {
-  const { encounter, teams, membersByTeam, assets, pdfTitleSettings } = bundle;
+  const { encounter, teams, membersByTeam, assets, pdfTitleSettings, pdfVisualTemplates } = bundle;
+  const pdfVisualConfig = resolvePdfVisualConfig(pdfVisualTemplates);
   const assetsByType = new Map();
   for (const asset of assets) {
     const key = normalize(asset.tipo);
@@ -562,12 +838,14 @@ function encounterHtml(bundle) {
     if (circlePoster) {
       sections.push(fullPageImage(circlePoster));
     }
-    sections.push(renderCircleContent(encounter, circle, membersByTeam.get(circle.id) || []));
+    sections.push(renderCircleContent(encounter, circle, membersByTeam.get(circle.id) || [], pdfVisualConfig));
   }
 
   appendAssets("SEPARADOR_EQUIPES", "SEPARADOR_ENCONTREIROS");
   for (const team of teams.filter((item) => normalize(item.tipo) === "TRABALHO")) {
-    sections.push(renderTeamContent(encounter, team, membersByTeam.get(team.id) || [], pdfTitleSettings));
+    sections.push(
+      renderTeamContent(encounter, team, membersByTeam.get(team.id) || [], pdfTitleSettings, pdfVisualConfig)
+    );
   }
 
   appendAssets("MUSICA_TEMA");
@@ -577,13 +855,14 @@ function encounterHtml(bundle) {
   return `
     <!DOCTYPE html>
     <html lang="pt-BR">
-      <head><meta charset="utf-8" /><title>Quadrante</title><style>${pdfCss(pdfTitleSettings)}</style></head>
+      <head><meta charset="utf-8" /><title>Quadrante</title><style>${pdfCss(pdfTitleSettings, pdfVisualConfig)}</style></head>
       <body>${sections.join("\n")}</body>
     </html>
   `;
 }
 
 function teamHtml(bundle) {
+  const pdfVisualConfig = resolvePdfVisualConfig(bundle.pdfVisualTemplates);
   const fakeEncounter = {
     nome: bundle.team.encontro_nome,
     tema: bundle.team.encontro_tema,
@@ -593,7 +872,13 @@ function teamHtml(bundle) {
   };
   const content = (() => {
     if (normalize(bundle.team.tipo) !== "CIRCULO") {
-      return renderTeamContent(fakeEncounter, bundle.team, bundle.members, bundle.pdfTitleSettings).replace("page-break", "");
+      return renderTeamContent(
+        fakeEncounter,
+        bundle.team,
+        bundle.members,
+        bundle.pdfTitleSettings,
+        pdfVisualConfig
+      ).replace("page-break", "");
     }
 
     const sections = [];
@@ -601,71 +886,208 @@ function teamHtml(bundle) {
     if (circlePoster) {
       sections.push(fullPageImage(circlePoster));
     }
-    sections.push(renderCircleContent(fakeEncounter, bundle.team, bundle.members).replace("page-break", ""));
+    sections.push(
+      renderCircleContent(fakeEncounter, bundle.team, bundle.members, pdfVisualConfig).replace("page-break", "")
+    );
     return sections.join("");
   })();
 
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8" /><title>Quadrante</title><style>${pdfCss(bundle.pdfTitleSettings)}</style></head><body>${content}</body></html>`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8" /><title>Quadrante</title><style>${pdfCss(bundle.pdfTitleSettings, pdfVisualConfig)}</style></head><body>${content}</body></html>`;
 }
 
-function pdfCss(pdfTitleSettings = { mode: "SYSTEM_FONT", fontUrl: null }) {
+function pdfCss(
+  pdfTitleSettings = { mode: "SYSTEM_FONT", fontUrl: null },
+  rawPdfVisualConfig = DEFAULT_PDF_VISUAL_CONFIG
+) {
+  const visualConfig = normalizePdfVisualConfig(rawPdfVisualConfig);
+  const circlePhotoGeometry = resolveCirclePhotoGeometry(visualConfig);
+  const baseFontFamily = normalizeFontFamily(visualConfig.fonte_base, DEFAULT_PDF_VISUAL_CONFIG.fonte_base);
+  const sloganFontFamily = normalizeFontFamily(visualConfig.fonte_slogan, DEFAULT_PDF_VISUAL_CONFIG.fonte_slogan);
+  const footerEnabled = Boolean(visualConfig.rodape_ativo);
+  const footerHeightMm = Number(visualConfig.rodape_altura_mm);
+  const pageBottomMm = footerEnabled
+    ? Math.max(Number(visualConfig.margem_inferior_mm), footerHeightMm + 4)
+    : Number(visualConfig.margem_inferior_mm);
+  const teamBottomMm = footerEnabled ? Math.max(pageBottomMm, footerHeightMm + 4) : pageBottomMm;
+  const watermarkText = String(visualConfig.marca_dagua_texto || "").trim();
+  const watermarkEnabled = Boolean(visualConfig.marca_dagua_ativa && watermarkText);
+
+  const leadershipStyle = normalizeLeadershipStyle(visualConfig.caixa_lideranca_estilo);
+  const leadershipBorderWidthPx = leadershipStyle === "BORDERED" ? 2 : leadershipStyle === "MINIMAL" ? 0 : 1;
+  const leadershipBackground =
+    leadershipStyle === "MINIMAL" ? "transparent" : visualConfig.caixa_lideranca_cor_fundo;
+  const leadershipBorderColor = visualConfig.caixa_lideranca_cor_borda;
+  const leadershipShadow = leadershipStyle === "SOFT" ? "inset 0 0 0 1px rgba(255,255,255,0.5)" : "none";
+
+  const participantCardHeightPx = Math.max(42, Math.round(circlePhotoGeometry.participantHeight + 12));
   const enableCustomFont = normalizePdfTitleMode(pdfTitleSettings.mode) === "CUSTOM_FONT" && pdfTitleSettings.fontUrl;
   const customFontFormat = enableCustomFont ? fontCssFormatByPath(pdfTitleSettings.fontUrl) : "truetype";
   const customFontFace = enableCustomFont
     ? `@font-face { font-family: "EquipeTituloCustom"; src: url("${escapeHtml(mediaForPdf(pdfTitleSettings.fontUrl))}") format("${customFontFormat}"); font-display: swap; }`
     : "";
+  const watermarkCss = watermarkEnabled
+    ? `
+    .page::after,
+    .full-page::after {
+      content: "${escapeCssContent(watermarkText)}";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: rotate(-28deg);
+      color: ${visualConfig.marca_dagua_cor};
+      opacity: ${visualConfig.marca_dagua_opacidade};
+      font-size: ${visualConfig.marca_dagua_tamanho_pt}pt;
+      letter-spacing: 2px;
+      z-index: 2;
+      pointer-events: none;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-transform: uppercase;
+    }
+    .page > *,
+    .full-page > * {
+      position: relative;
+      z-index: 1;
+    }`
+    : "";
+
   return `
     ${customFontFace}
     @page { size: A4; margin: 0; }
-    body { margin: 0; font-family: "Montserrat", Arial, sans-serif; color: #333; }
-    .page { width: 210mm; min-height: 297mm; padding: 8mm 8mm 35mm; box-sizing: border-box; position: relative; }
+    body { margin: 0; font-family: ${baseFontFamily}; color: #333; }
+    .page,
+    .full-page { width: 210mm; min-height: 297mm; box-sizing: border-box; position: relative; overflow: hidden; }
+    .page { padding: ${visualConfig.margem_topo_mm}mm ${visualConfig.margem_direita_mm}mm ${pageBottomMm}mm ${visualConfig.margem_esquerda_mm}mm; }
     .page-break { page-break-after: always; }
-    .footer-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 12mm; background: #333; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 8pt; text-transform: uppercase; letter-spacing: 1px; }
-    .full-page { padding: 0; overflow: hidden; }
+    .footer-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: ${footerHeightMm}mm;
+      background: ${visualConfig.rodape_cor_fundo};
+      color: ${visualConfig.rodape_cor_texto};
+      display: ${footerEnabled ? "flex" : "none"};
+      align-items: center;
+      justify-content: center;
+      font-size: 8pt;
+      text-transform: ${visualConfig.rodape_maiusculo ? "uppercase" : "none"};
+      letter-spacing: 1px;
+      line-height: 1.2;
+      padding: 0 8mm;
+      text-align: center;
+    }
+    .full-page { padding: 0; }
     .full-page-image { width: 210mm; height: 297mm; object-fit: cover; display: block; }
     .circulo-header { text-align: center; border-bottom: 1px solid #eee; margin-bottom: 5px; }
     .circulo-header h1 { margin: 0; font-size: 20pt; text-transform: uppercase; line-height: 1; }
-    .circulo-header p { margin: 2px 0 5px; font-size: 10pt; text-transform: uppercase; color: #666; }
-    .leadership-box { display: flex; gap: 10px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; padding: 6px; margin-bottom: 6px; }
+    .circulo-header p {
+      margin: 2px 0 5px;
+      font-size: 10pt;
+      text-transform: uppercase;
+      color: #666;
+      font-family: ${sloganFontFamily};
+      letter-spacing: 0.3px;
+    }
+    .leadership-box {
+      display: flex;
+      gap: 10px;
+      border: ${leadershipBorderWidthPx}px solid ${leadershipBorderColor};
+      border-radius: ${visualConfig.caixa_lideranca_raio_px}px;
+      background: ${leadershipBackground};
+      box-shadow: ${leadershipShadow};
+      padding: 6px;
+      margin-bottom: 6px;
+    }
     .leader-column { width: 50%; }
     .leader-column h3 { margin: 0 0 4px; font-size: 8pt; text-transform: uppercase; color: #666; }
     .leader-card { display: flex; gap: 6px; margin-bottom: 4px; align-items: center; min-height: 20mm; }
-    .leader-photo { width: 18mm; height: 18mm; border-radius: 5px; object-fit: cover; background: #e5e5e5; flex-shrink: 0; }
+    .leader-photo {
+      width: ${circlePhotoGeometry.leaderWidth}mm;
+      height: ${circlePhotoGeometry.leaderHeight}mm;
+      border-radius: ${circlePhotoGeometry.borderRadius};
+      object-fit: cover;
+      background: #e5e5e5;
+      flex-shrink: 0;
+      border: 1px solid #d8d8d8;
+    }
     .leader-name { font-size: 10pt; font-weight: 700; }
     .leader-meta { font-size: 8pt; color: #666; }
     .participants-grid { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
-    .participant-card { width: 49%; height: 42px; border-bottom: 1px solid #f0f0f0; display: flex; gap: 4px; align-items: center; overflow: hidden; }
-    .participant-photo { width: 30px; height: 30px; border-radius: 6px; object-fit: cover; background: #eee; flex-shrink: 0; }
+    .participant-card {
+      width: 49%;
+      height: ${participantCardHeightPx}px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      overflow: hidden;
+    }
+    .participant-photo {
+      width: ${circlePhotoGeometry.participantWidth}px;
+      height: ${circlePhotoGeometry.participantHeight}px;
+      border-radius: ${circlePhotoGeometry.borderRadius};
+      object-fit: cover;
+      background: #eee;
+      flex-shrink: 0;
+      border: 1px solid #d8d8d8;
+    }
     .participant-data { min-width: 0; }
     .participant-name { font-size: 8pt; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .participant-meta { font-size: 7pt; color: #666; }
     .equipe-header { text-align: center; margin-bottom: 8px; border-bottom: 2px solid #333; padding-bottom: 5px; }
     .equipe-label { font-size: 12pt; color: #444; font-weight: 700; }
     .equipe-header h1 { margin: 2px 0 0; font-size: 18pt; text-transform: uppercase; }
-    .team-title-custom-font { font-family: "EquipeTituloCustom", "Montserrat", Arial, sans-serif; }
+    .team-title { font-family: ${baseFontFamily}; }
+    .team-title-custom-font { font-family: "EquipeTituloCustom", ${baseFontFamily}; }
     .team-title-art-frame { width: 100%; min-height: 16mm; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
     .team-title-art { max-width: 90%; max-height: 24mm; object-fit: contain; }
-    .team-page { padding: 8mm 8mm 16mm; }
+    .team-page {
+      padding: ${visualConfig.margem_topo_mm}mm ${visualConfig.margem_direita_mm}mm ${teamBottomMm}mm ${visualConfig.margem_esquerda_mm}mm;
+    }
     .team-page-body { padding-bottom: 2mm; }
     .team-page-body-continued { padding-top: 3mm; }
-    .team-photo-frame { width: 150mm; height: 100mm; margin: 0 auto 12px; border: 3px solid #444; border-radius: 12px; overflow: hidden; background: #eee; }
+    .team-photo-frame {
+      width: ${visualConfig.foto_equipe_largura_mm}mm;
+      height: ${visualConfig.foto_equipe_altura_mm}mm;
+      margin: 0 auto 12px;
+      border: 3px solid #444;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #eee;
+    }
     .team-photo { width: 100%; height: 100%; object-fit: cover; }
-    .team-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9pt; }
-    .team-table { page-break-inside: avoid; break-inside: avoid; }
+    .team-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9pt; page-break-inside: avoid; break-inside: avoid; }
     .team-table th { background: #666; color: #fff; padding: 5px; text-transform: uppercase; }
     .team-table td { border-bottom: 1px solid #ccc; padding: 3px 5px; }
     .col-name { width: 40%; font-weight: 700; }
     .col-phone { width: 10%; text-align: right; font-size: 8pt; white-space: nowrap; }
+    .team-table-model-compact .team-table { margin-bottom: 6px; font-size: 8.2pt; }
+    .team-table-model-compact .team-table th { padding: 4px 5px; }
+    .team-table-model-compact .team-table td { padding: 2px 4px; }
+    .team-table-model-compact .col-phone { font-size: 7.3pt; }
+    .team-table-model-comfortable .team-table { margin-bottom: 9px; font-size: 9.4pt; }
+    .team-table-model-comfortable .team-table th { padding: 6px 6px; }
+    .team-table-model-comfortable .team-table td { padding: 4px 6px; }
+    .team-table-model-comfortable .col-phone { font-size: 8.2pt; }
     .team-page-no-photo .equipe-header { margin-bottom: 5px; }
     .team-page-no-photo .team-table { margin-bottom: 6px; font-size: 8.8pt; }
     .team-page-no-photo .team-table th { padding: 4px 5px; }
     .team-page-no-photo .team-table td { padding: 2px 5px; }
     .team-page-no-photo .col-phone { font-size: 7.6pt; }
-    .team-page-compact .team-photo-frame { width: 145mm; height: 76mm; margin-bottom: 8px; }
+    .team-page-compact .team-photo-frame {
+      width: ${Math.max(120, Math.round(visualConfig.foto_equipe_largura_mm - 5))}mm;
+      height: ${Math.max(65, Math.round(visualConfig.foto_equipe_altura_mm * 0.76))}mm;
+      margin-bottom: 8px;
+    }
     .team-page-compact .team-table { margin-bottom: 6px; font-size: 8.4pt; }
     .team-page-compact .team-table th { padding: 4px 5px; }
     .team-page-compact .team-table td { padding: 2px 4px; }
     .team-page-compact .col-phone { font-size: 7.4pt; }
+    ${watermarkCss}
   `;
 }
 
