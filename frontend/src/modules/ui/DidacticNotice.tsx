@@ -99,8 +99,8 @@ function buildSuccessTips(message: string): NoticeTips | null {
       title: "Configuração do PDF salva",
       tips: [
         "Gere um PDF parcial para validar o resultado visual.",
-        "Se estiver correto, publique o template no Centro de Templates.",
-        "Mantenha um histórico para rollback rápido."
+        "Se necessário, ajuste os campos e salve novamente.",
+        "O template padrão permanece disponível para recuperação."
       ]
     };
   }
@@ -137,4 +137,3 @@ export function DidacticNotice({ message, error }: DidacticNoticeProps) {
     </div>
   );
 }
-

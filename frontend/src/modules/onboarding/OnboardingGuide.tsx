@@ -44,8 +44,8 @@ const STEPS: Step[] = [
   },
   {
     id: "templates",
-    title: "6) Publicar template visual",
-    hint: "No Centro de Templates, publique quando aprovado.",
+    title: "6) Salvar template visual",
+    hint: "No Centro de Templates, ajuste os campos e salve.",
     to: "/settings"
   }
 ];
@@ -136,4 +136,3 @@ export function OnboardingGuide() {
     </div>
   );
 }
-

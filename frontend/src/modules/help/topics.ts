@@ -118,7 +118,7 @@ export const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
       <ul>
         <li><strong>Usuários:</strong> permissões por funcionalidade e escopo por equipe.</li>
         <li><strong>Título PDF:</strong> fonte padrão, fonte customizada ou arte por equipe.</li>
-        <li><strong>Templates PDF:</strong> centro de templates com rascunho, publicação e histórico.</li>
+        <li><strong>Templates PDF:</strong> selecione um template, edite os campos e salve para aplicar no PDF.</li>
         <li><strong>Auditoria:</strong> registro de ações por usuário e encontro.</li>
       </ul>
     `

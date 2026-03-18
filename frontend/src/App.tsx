@@ -1892,13 +1892,17 @@ function AppShell() {
   async function handleSavePdfVisualTemplates(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
+      const baseSettings = normalizePdfVisualTemplatesSettingsClient(pdfVisualTemplatesSettings);
       const nextSettings = normalizePdfVisualTemplatesSettingsClient(
         pushTemplateHistory(
-          normalizePdfVisualTemplatesSettingsClient(pdfVisualTemplatesSettings),
-          createTemplateHistoryEntry("SAVE", getActivePdfTemplate(pdfVisualTemplatesSettings))
+          {
+            ...baseSettings,
+            published_template_id: baseSettings.active_template_id
+          },
+          createTemplateHistoryEntry("SAVE", getActivePdfTemplate(baseSettings))
         )
       );
-      await persistPdfTemplates(nextSettings, "Template visual do PDF salvo.");
+      await persistPdfTemplates(nextSettings, "Template salvo e aplicado ao PDF.");
     } catch (err) {
       setError(parseError(err));
     }
@@ -2595,6 +2599,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
   const activePdfTemplate = shell.activePdfVisualTemplate as PdfVisualTemplate | undefined;
   const activePdfConfig = activePdfTemplate?.config || DEFAULT_PDF_VISUAL_CONFIG;
   const isDefaultPdfTemplate = activePdfTemplate?.id === "default";
+  const canEditSelectedTemplate = canManageUsers && !isDefaultPdfTemplate;
 
   useEffect(() => {
     actions.refreshUsersMeta();
@@ -2904,7 +2909,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
           <form className="grid-form" onSubmit={actions.handleSavePdfVisualTemplates}>
             <div className="pdf-template-head">
               <label>
-                Template ativo
+                Template
                 <select
                   value={shell.pdfVisualTemplatesSettings.active_template_id}
                   disabled={!canManageUsers}
@@ -2925,38 +2930,16 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                   onChange={(event) => actions.renameActivePdfTemplate(event.target.value)}
                 />
               </label>
-              <div className="actions-row">
-                <button type="button" className="ghost" disabled={!canManageUsers} onClick={() => actions.cloneActivePdfTemplate()}>
-                  Clonar template ativo
-                </button>
-                <button type="button" disabled={!canManageUsers} onClick={() => actions.publishActivePdfTemplate()}>
-                  Publicar template ativo
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={!canManageUsers || shell.pdfVisualTemplatesSettings.templates.length <= 1 || isDefaultPdfTemplate}
-                  onClick={() => actions.deleteActivePdfVisualTemplate()}
-                >
-                  Excluir template
-                </button>
-              </div>
-              <div className="status-inline">
-                <span className="chip">Rascunho ativo: {activePdfTemplate?.nome || "-"}</span>
-                <span className="chip ok">
-                  Publicado:{" "}
-                  {shell.pdfVisualTemplatesSettings.templates.find(
-                    (item: PdfVisualTemplate) => item.id === shell.pdfVisualTemplatesSettings.published_template_id
-                  )?.nome || "-"}
-                </span>
-              </div>
               <p className="muted">
-                O template <strong>Padrão do sistema</strong> é fixo e sempre permanece disponível como fallback.
+                Escolha um template, ajuste os campos abaixo e clique em <strong>Salvar template</strong>.
+              </p>
+              <p className="muted">
+                O template <strong>Padrão do sistema</strong> é fixo e permanece disponível para recuperação.
               </p>
             </div>
 
             <div className="pdf-template-grid">
-              <fieldset className="pdf-template-group">
+              <fieldset className="pdf-template-group" disabled={!canEditSelectedTemplate}>
                 <legend>Fotos</legend>
                 <div className="grid-form three">
                   <label>
@@ -3091,7 +3074,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 </div>
               </fieldset>
 
-              <fieldset className="pdf-template-group">
+              <fieldset className="pdf-template-group" disabled={!canEditSelectedTemplate}>
                 <legend>Tabela e fontes</legend>
                 <div className="grid-form two">
                   <label>
@@ -3129,7 +3112,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 </div>
               </fieldset>
 
-              <fieldset className="pdf-template-group">
+              <fieldset className="pdf-template-group" disabled={!canEditSelectedTemplate}>
                 <legend>Margens e rodapé</legend>
                 <div className="grid-form three">
                   <label>
@@ -3234,7 +3217,7 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 </div>
               </fieldset>
 
-              <fieldset className="pdf-template-group">
+              <fieldset className="pdf-template-group" disabled={!canEditSelectedTemplate}>
                 <legend>Marca d'água e liderança</legend>
                 <div className="grid-form three">
                   <label className="toggle">
@@ -3346,44 +3329,9 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
               </fieldset>
             </div>
 
-            <div className="pdf-history-box">
-              <h3>Histórico de versões</h3>
-              {shell.pdfVisualTemplatesSettings.history.length === 0 ? (
-                <p className="muted">Nenhuma versão registrada ainda.</p>
-              ) : (
-                <div className="entity-list">
-                  {shell.pdfVisualTemplatesSettings.history.slice(0, 12).map((entry: PdfTemplateHistoryEntry) => (
-                    <article key={entry.id} className="entity-card">
-                      <div>
-                        <h3>{entry.template_nome}</h3>
-                        <p>
-                          Ação: <strong>{entry.action}</strong> | {formatDateTime(entry.created_at)}
-                        </p>
-                      </div>
-                      <div className="actions-row">
-                        <button
-                          type="button"
-                          className="ghost"
-                          disabled={!canManageUsers}
-                          onClick={() => actions.rollbackTemplateByHistory(entry.id)}
-                        >
-                          Restaurar esta versão
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <p className="muted">
-              Ajuste os campos e clique em <strong>Salvar rascunho</strong>. Para uso em produção, clique em
-              <strong> Publicar template ativo</strong>.
-            </p>
-
             <div className="actions-row">
-              <button type="submit" disabled={!canManageUsers}>
-                Salvar rascunho
+              <button type="submit" disabled={!canEditSelectedTemplate}>
+                Salvar template
               </button>
             </div>
           </form>
