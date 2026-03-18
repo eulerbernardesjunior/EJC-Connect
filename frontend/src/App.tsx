@@ -12,6 +12,10 @@ import {
 } from "react-router-dom";
 import ReactCrop, { Crop, PercentCrop, PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
+import { HELP_TOPICS, HelpTopicKey, resolveHelpTopic } from "./modules/help/topics";
+import { OnboardingGuide } from "./modules/onboarding/OnboardingGuide";
+import { DidacticNotice } from "./modules/ui/DidacticNotice";
+import { InteractiveCard } from "./modules/ui/InteractiveCard";
 
 type TeamType = "TRABALHO" | "CIRCULO";
 type ThemeMode = "light" | "dark";
@@ -88,9 +92,22 @@ type PdfVisualTemplate = {
   config: PdfVisualConfig;
 };
 
+type PdfTemplateHistoryAction = "SAVE" | "PUBLISH" | "ROLLBACK" | "CLONE";
+
+type PdfTemplateHistoryEntry = {
+  id: string;
+  template_id: string;
+  template_nome: string;
+  action: PdfTemplateHistoryAction;
+  created_at: string;
+  snapshot: PdfVisualConfig;
+};
+
 type PdfVisualTemplatesSettings = {
   active_template_id: string;
+  published_template_id: string;
   templates: PdfVisualTemplate[];
+  history: PdfTemplateHistoryEntry[];
 };
 
 type Member = {
@@ -370,159 +387,6 @@ const PERMISSION_UI_TEXT: Record<string, { label: string; description: string }>
   }
 };
 
-type HelpTopicKey =
-  | "dashboard"
-  | "encounters"
-  | "encounter-hub"
-  | "team-list"
-  | "circle-list"
-  | "team-detail"
-  | "circle-detail"
-  | "assets"
-  | "settings"
-  | "default";
-
-type HelpTopic = {
-  title: string;
-  html: string;
-};
-
-const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
-  dashboard: {
-    title: "Ajuda - Dashboard",
-    html: `
-      <p>O Dashboard apresenta os totais do encontro selecionado (ou de todos).</p>
-      <ul>
-        <li><strong>Encontros:</strong> quantidade cadastrada.</li>
-        <li><strong>Equipes / Círculos:</strong> total de grupos.</li>
-        <li><strong>Capas/Cartazes:</strong> artes A4 cadastradas.</li>
-        <li><strong>Membros:</strong> participantes e colaboradores.</li>
-      </ul>
-    `
-  },
-  encounters: {
-    title: "Ajuda - Encontros",
-    html: `
-      <p>Nesta tela você cria e acessa encontros.</p>
-      <ul>
-        <li><strong>Cadastrar encontro:</strong> informe nome, data de início e data de fim.</li>
-        <li><strong>Abrir gestão:</strong> entra na visão de cards do encontro.</li>
-        <li><strong>Quadrante:</strong> gera o PDF completo do encontro.</li>
-      </ul>
-    `
-  },
-  "encounter-hub": {
-    title: "Ajuda - Gestão do Encontro",
-    html: `
-      <p>Esta tela organiza a gestão por cards:</p>
-      <ul>
-        <li><strong>Equipes:</strong> cadastro, ordem de impressão e integrantes.</li>
-        <li><strong>Círculos:</strong> cadastro, cartaz e integrantes.</li>
-        <li><strong>Capas e separadores:</strong> envio de artes A4.</li>
-      </ul>
-    `
-  },
-  "team-list": {
-    title: "Ajuda - Equipes",
-    html: `
-      <p>Crie e organize as equipes de trabalho.</p>
-      <ul>
-        <li><strong>Ordem de impressão:</strong> define a sequência no PDF.</li>
-        <li><strong>Abrir:</strong> acessa detalhes, membros, foto e importação.</li>
-        <li><strong>Editar/Excluir:</strong> disponível conforme permissão.</li>
-      </ul>
-    `
-  },
-  "circle-list": {
-    title: "Ajuda - Círculos",
-    html: `
-      <p>Além do cadastro manual, existe importação geral de círculos.</p>
-      <p><strong>Exemplo mínimo aceito (importação geral):</strong></p>
-      <table>
-        <thead><tr><th>Círculo</th><th>Cargo</th><th>Nome</th><th>Telefone</th><th>Paróquia</th></tr></thead>
-        <tbody>
-          <tr><td>AZUL</td><td>Tios Circulistas</td><td>Tio João</td><td>(11) 99999-0001</td><td>Santa Ana</td></tr>
-          <tr><td>AZUL</td><td>Jovem Circulista</td><td>Ana Souza</td><td>(11) 99999-0002</td><td>Santa Ana</td></tr>
-          <tr><td>AZUL</td><td>Jovem</td><td>Carlos Lima</td><td>(11) 99999-0003</td><td>Santa Ana</td></tr>
-        </tbody>
-      </table>
-    `
-  },
-  "team-detail": {
-    title: "Ajuda - Detalhe da Equipe",
-    html: `
-      <p>Gerencie foto da equipe, integrantes e importação da equipe.</p>
-      <ul>
-        <li><strong>Enviar foto:</strong> abre crop 15x10 antes do upload.</li>
-        <li><strong>Importar dados:</strong> arquivo XLSX/CSV da equipe atual.</li>
-        <li><strong>Visualizar quadrante da equipe:</strong> gera PDF parcial.</li>
-      </ul>
-      <p><strong>Exemplo mínimo aceito (importação da equipe):</strong></p>
-      <table>
-        <thead><tr><th>Cargo</th><th>Nome principal</th><th>Nome secundário</th><th>Telefone 1</th><th>Telefone 2</th><th>Paróquia</th></tr></thead>
-        <tbody>
-          <tr><td>Jovem Coordenador</td><td>Pedro Alves</td><td></td><td>(11) 98888-1000</td><td></td><td>Santa Ana</td></tr>
-          <tr><td>Tios Coordenadores</td><td>Tio Marcos</td><td>Tia Lúcia</td><td>(11) 97777-2000</td><td>(11) 96666-2001</td><td>Santa Ana</td></tr>
-          <tr><td>Integrante</td><td>Joana Melo</td><td></td><td>(11) 95555-3000</td><td></td><td>Santa Ana</td></tr>
-        </tbody>
-      </table>
-      <p><em>Observação:</em> cargos com “Tio/Tios” podem ser tratados como casal conforme regra do importador.</p>
-    `
-  },
-  "circle-detail": {
-    title: "Ajuda - Detalhe do Círculo",
-    html: `
-      <p>Gerencie cartaz A4, membros e fotos individuais.</p>
-      <ul>
-        <li><strong>Cartaz do círculo:</strong> upload com crop A4.</li>
-        <li><strong>Fotos dos membros:</strong> upload com crop para uso no PDF.</li>
-        <li><strong>Importar dados:</strong> arquivo XLSX/CSV do círculo atual.</li>
-      </ul>
-      <p><strong>Exemplo mínimo aceito (importação do círculo):</strong></p>
-      <table>
-        <thead><tr><th>Cargo</th><th>Nome principal</th><th>Nome secundário</th><th>Telefone 1</th><th>Telefone 2</th><th>Paróquia</th></tr></thead>
-        <tbody>
-          <tr><td>Tios Circulistas</td><td>Tio Paulo</td><td>Tia Helena</td><td>(11) 94444-4000</td><td>(11) 93333-4001</td><td>Santa Ana</td></tr>
-          <tr><td>Jovem Circulista</td><td>Fernanda Rosa</td><td></td><td>(11) 92222-5000</td><td></td><td>Santa Ana</td></tr>
-          <tr><td>Jovem</td><td>Lucas Neri</td><td></td><td>(11) 91111-6000</td><td></td><td>Santa Ana</td></tr>
-        </tbody>
-      </table>
-    `
-  },
-  assets: {
-    title: "Ajuda - Capas e Artes A4",
-    html: `
-      <p>Cadastre artes de página inteira para o quadrante.</p>
-      <ul>
-        <li><strong>Tipos:</strong> capa, separadores, cartaz, música, convite e contra capa.</li>
-        <li><strong>Ordem:</strong> controla a sequência de impressão no PDF.</li>
-        <li><strong>Upload:</strong> sempre passa por crop A4.</li>
-      </ul>
-    `
-  },
-  settings: {
-    title: "Ajuda - Configurações",
-    html: `
-      <p>A tela de configurações possui 4 abas:</p>
-      <ul>
-        <li><strong>Usuários:</strong> cadastro, status e permissões por funcionalidade.</li>
-        <li><strong>Título PDF:</strong> fonte padrão, fonte customizada ou arte por equipe.</li>
-        <li><strong>Templates PDF:</strong> ajustes visuais (fotos, tabela, fontes, margens, rodapé, marca d'água e caixa de liderança).</li>
-        <li><strong>Auditoria:</strong> rastreio das ações por usuário e encontro.</li>
-      </ul>
-      <p><strong>Permissões:</strong> use descrições amigáveis para liberar apenas o necessário.</p>
-    `
-  },
-  default: {
-    title: "Ajuda do Sistema",
-    html: `
-      <p>Use o menu lateral para navegar entre Dashboard, Encontros e Configurações.</p>
-      <p>As importações são feitas em Equipes/Círculos e em Importação Geral de Círculos.</p>
-      <p>As artes de capa/cartaz são gerenciadas em <strong>Capas e Artes A4</strong>.</p>
-    `
-  }
-};
-
 const ROLE_DEFAULT_PERMISSIONS: Record<RoleType, Record<string, boolean>> = {
   ADMIN: Object.values(PERMISSIONS).reduce((acc, key) => ({ ...acc, [key]: true }), {}),
   EDITOR: {
@@ -665,13 +529,15 @@ const DEFAULT_PDF_VISUAL_CONFIG: PdfVisualConfig = {
 
 const EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS: PdfVisualTemplatesSettings = {
   active_template_id: "default",
+  published_template_id: "default",
   templates: [
     {
       id: "default",
       nome: "Padrão do sistema",
       config: { ...DEFAULT_PDF_VISUAL_CONFIG }
     }
-  ]
+  ],
+  history: []
 };
 
 const DEFAULT_AUDIT_FILTERS: AuditFilters = {
@@ -765,6 +631,16 @@ function formatDateTime(dateRaw?: string | null) {
   const parsed = new Date(String(dateRaw));
   if (Number.isNaN(parsed.getTime())) return "-";
   return parsed.toLocaleString("pt-BR");
+}
+
+function toInputDateString(dateRaw?: string | null) {
+  if (!dateRaw) return "";
+  const raw = String(dateRaw).trim();
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
 }
 
 function displayEncounterName(encounter: Encounter) {
@@ -917,9 +793,33 @@ function normalizePdfVisualTemplatesSettingsClient(raw?: Partial<PdfVisualTempla
       : [...EMPTY_PDF_VISUAL_TEMPLATES_SETTINGS.templates];
 
   const active = templates.find((template) => template.id === source.active_template_id) || templates[0];
+  const published = templates.find((template) => template.id === source.published_template_id) || active;
+  const historyRaw = Array.isArray(source.history) ? source.history : [];
+  const history = historyRaw
+    .slice(0, 50)
+    .map((entry, index) => {
+      const template = templates.find((item) => item.id === entry.template_id) || active;
+      const actionRaw = String(entry.action || "").toUpperCase();
+      const action: PdfTemplateHistoryAction =
+        actionRaw === "PUBLISH" || actionRaw === "ROLLBACK" || actionRaw === "CLONE" ? actionRaw : "SAVE";
+      const createdAtRaw = String(entry.created_at || "").trim();
+      const created_at = createdAtRaw || new Date().toISOString();
+      return {
+        id: String(entry.id || `history-${index + 1}`),
+        template_id: template.id,
+        template_nome: String(entry.template_nome || template.nome || "Template").trim() || "Template",
+        action,
+        created_at,
+        snapshot: normalizePdfVisualConfigClient(entry.snapshot || template.config)
+      };
+    })
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
   return {
     active_template_id: active.id,
-    templates
+    published_template_id: published.id,
+    templates,
+    history
   };
 }
 
@@ -967,19 +867,6 @@ function permissionUiText(permissionKey: string) {
     label: `${scopeLabel} - ${actionLabel}`,
     description: "Permissão personalizada."
   };
-}
-
-function resolveHelpTopic(pathname: string): HelpTopicKey {
-  if (/^\/dashboard$/.test(pathname)) return "dashboard";
-  if (/^\/settings$/.test(pathname)) return "settings";
-  if (/^\/encounters$/.test(pathname)) return "encounters";
-  if (/^\/encounters\/\d+$/.test(pathname)) return "encounter-hub";
-  if (/^\/encounters\/\d+\/teams$/.test(pathname)) return "team-list";
-  if (/^\/encounters\/\d+\/circles$/.test(pathname)) return "circle-list";
-  if (/^\/encounters\/\d+\/teams\/\d+$/.test(pathname)) return "team-detail";
-  if (/^\/encounters\/\d+\/circles\/\d+$/.test(pathname)) return "circle-detail";
-  if (/^\/encounters\/\d+\/assets$/.test(pathname)) return "assets";
-  return "default";
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -1182,6 +1069,7 @@ function AppShell() {
     capasCartazes: 0,
     membros: 0
   });
+  const [encounterEditingId, setEncounterEditingId] = useState<number | null>(null);
 
   const [encounterForm, setEncounterForm] = useState({
     nome: "",
@@ -1476,15 +1364,17 @@ function AppShell() {
   async function handleCreateEncounter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      await authRequest("/api/encounters", {
-        method: "POST",
+      const editing = encounterEditingId && encounterEditingId > 0;
+      await authRequest(editing ? `/api/encounters/${encounterEditingId}` : "/api/encounters", {
+        method: editing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(encounterForm)
       });
+      setEncounterEditingId(null);
       setEncounterForm({ nome: "", dataInicio: "", dataFim: "" });
       await refreshEncounters();
       await refreshDashboard();
-      success("Encontro cadastrado.");
+      success(editing ? "Encontro atualizado." : "Encontro cadastrado.");
     } catch (err) {
       setError(parseError(err));
     }
@@ -1494,6 +1384,10 @@ function AppShell() {
     if (!window.confirm("Excluir este encontro?")) return;
     try {
       await authRequest(`/api/encounters/${id}`, { method: "DELETE" });
+      if (encounterEditingId === id) {
+        setEncounterEditingId(null);
+        setEncounterForm({ nome: "", dataInicio: "", dataFim: "" });
+      }
       await refreshEncounters();
       await refreshDashboard();
       success("Encontro removido.");
@@ -1795,6 +1689,31 @@ function AppShell() {
     );
   }
 
+  function createTemplateHistoryEntry(
+    action: PdfTemplateHistoryAction,
+    template: PdfVisualTemplate,
+    snapshot?: PdfVisualConfig
+  ): PdfTemplateHistoryEntry {
+    return {
+      id: `hist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      template_id: template.id,
+      template_nome: template.nome,
+      action,
+      created_at: new Date().toISOString(),
+      snapshot: normalizePdfVisualConfigClient(snapshot || template.config)
+    };
+  }
+
+  function pushTemplateHistory(
+    settings: PdfVisualTemplatesSettings,
+    entry: PdfTemplateHistoryEntry
+  ): PdfVisualTemplatesSettings {
+    return {
+      ...settings,
+      history: [entry, ...(settings.history || [])].slice(0, 50)
+    };
+  }
+
   function setActivePdfVisualTemplate(templateId: string) {
     setPdfVisualTemplatesSettings((prev) => {
       const next = normalizePdfVisualTemplatesSettingsClient(prev);
@@ -1858,17 +1777,66 @@ function AppShell() {
         suffix += 1;
       }
       const templateName = `Template ${next.templates.length + 1}`;
-      return {
-        active_template_id: id,
-        templates: [
-          ...next.templates,
-          {
-            id,
-            nome: templateName,
-            config: normalizePdfVisualConfigClient(activeTemplate?.config || DEFAULT_PDF_VISUAL_CONFIG)
-          }
-        ]
+      const createdTemplate: PdfVisualTemplate = {
+        id,
+        nome: templateName,
+        config: normalizePdfVisualConfigClient(activeTemplate?.config || DEFAULT_PDF_VISUAL_CONFIG)
       };
+      return pushTemplateHistory(
+        {
+          ...next,
+          active_template_id: id,
+          templates: [...next.templates, createdTemplate]
+        },
+        createTemplateHistoryEntry("CLONE", createdTemplate)
+      );
+    });
+  }
+
+  function cloneActivePdfTemplate() {
+    createPdfVisualTemplate();
+  }
+
+  function publishActivePdfTemplate() {
+    setPdfVisualTemplatesSettings((prev) => {
+      const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      const activeTemplate = getActivePdfTemplate(next);
+      if (!activeTemplate) return next;
+      return pushTemplateHistory(
+        {
+          ...next,
+          published_template_id: activeTemplate.id
+        },
+        createTemplateHistoryEntry("PUBLISH", activeTemplate)
+      );
+    });
+  }
+
+  function rollbackTemplateByHistory(historyId: string) {
+    setPdfVisualTemplatesSettings((prev) => {
+      const next = normalizePdfVisualTemplatesSettingsClient(prev);
+      const targetHistory = (next.history || []).find((entry) => entry.id === historyId);
+      if (!targetHistory) return next;
+
+      const templateIndex = next.templates.findIndex((template) => template.id === targetHistory.template_id);
+      if (templateIndex < 0) return next;
+
+      const templates = [...next.templates];
+      const template = templates[templateIndex];
+      const restoredTemplate: PdfVisualTemplate = {
+        ...template,
+        config: normalizePdfVisualConfigClient(targetHistory.snapshot)
+      };
+      templates[templateIndex] = restoredTemplate;
+
+      return pushTemplateHistory(
+        {
+          ...next,
+          active_template_id: restoredTemplate.id,
+          templates
+        },
+        createTemplateHistoryEntry("ROLLBACK", restoredTemplate, targetHistory.snapshot)
+      );
     });
   }
 
@@ -1877,8 +1845,13 @@ function AppShell() {
       const next = normalizePdfVisualTemplatesSettingsClient(prev);
       if (next.templates.length <= 1) return next;
       const filtered = next.templates.filter((template) => template.id !== next.active_template_id);
+      const nextActive = filtered[0].id;
+      const nextPublished =
+        filtered.find((template) => template.id === next.published_template_id)?.id || nextActive;
       return {
-        active_template_id: filtered[0].id,
+        ...next,
+        active_template_id: nextActive,
+        published_template_id: nextPublished,
         templates: filtered
       };
     });
@@ -1887,7 +1860,12 @@ function AppShell() {
   async function handleSavePdfVisualTemplates(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
-      const payload = normalizePdfVisualTemplatesSettingsClient(pdfVisualTemplatesSettings);
+      const payload = normalizePdfVisualTemplatesSettingsClient(
+        pushTemplateHistory(
+          normalizePdfVisualTemplatesSettingsClient(pdfVisualTemplatesSettings),
+          createTemplateHistoryEntry("SAVE", getActivePdfTemplate(pdfVisualTemplatesSettings))
+        )
+      );
       const data = await authRequest<PdfVisualTemplatesSettings>("/api/settings/pdf-templates", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -2135,6 +2113,7 @@ function AppShell() {
     auditLoading,
     auditFilters,
     dashboard,
+    encounterEditingId,
     encounterForm,
     userForm,
     teamForm,
@@ -2157,6 +2136,7 @@ function AppShell() {
 
   const actions = {
     setEncounterForm,
+    setEncounterEditingId,
     setUserForm,
     setTeamForm,
     setMemberForm,
@@ -2191,7 +2171,10 @@ function AppShell() {
     updateActivePdfVisualConfig,
     renameActivePdfTemplate,
     createPdfVisualTemplate,
+    cloneActivePdfTemplate,
     deleteActivePdfVisualTemplate,
+    publishActivePdfTemplate,
+    rollbackTemplateByHistory,
     handleSaveTeam,
     handleDeleteTeam,
     handleSaveMember,
@@ -2332,6 +2315,7 @@ function AppShell() {
           <ContextHelpButton topicKey={helpTopic} />
         </div>
         {(message || error) && <div className={`notice ${error ? "error" : "ok"}`}>{error || message}</div>}
+        <DidacticNotice message={message} error={error} />
 
         <Routes>
           <Route path="/" element={<Navigate to={defaultPath} replace />} />
@@ -2512,6 +2496,7 @@ function DashboardScreen({ shell, actions }: { shell: any; actions: any }) {
 
   return (
     <section className="page-stack">
+      <OnboardingGuide />
       <div className="panel">
         <div className="panel-head">
           <h2>Dashboard</h2>
@@ -2914,8 +2899,11 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 />
               </label>
               <div className="actions-row">
-                <button type="button" className="ghost" disabled={!canManageUsers} onClick={() => actions.createPdfVisualTemplate()}>
-                  Novo template
+                <button type="button" className="ghost" disabled={!canManageUsers} onClick={() => actions.cloneActivePdfTemplate()}>
+                  Clonar template ativo
+                </button>
+                <button type="button" disabled={!canManageUsers} onClick={() => actions.publishActivePdfTemplate()}>
+                  Publicar template ativo
                 </button>
                 <button
                   type="button"
@@ -2925,6 +2913,15 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                 >
                   Excluir template
                 </button>
+              </div>
+              <div className="status-inline">
+                <span className="chip">Rascunho ativo: {activePdfTemplate?.nome || "-"}</span>
+                <span className="chip ok">
+                  Publicado:{" "}
+                  {shell.pdfVisualTemplatesSettings.templates.find(
+                    (item: PdfVisualTemplate) => item.id === shell.pdfVisualTemplatesSettings.published_template_id
+                  )?.nome || "-"}
+                </span>
               </div>
             </div>
 
@@ -3319,13 +3316,44 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
               </fieldset>
             </div>
 
+            <div className="pdf-history-box">
+              <h3>Histórico de versões</h3>
+              {shell.pdfVisualTemplatesSettings.history.length === 0 ? (
+                <p className="muted">Nenhuma versão registrada ainda.</p>
+              ) : (
+                <div className="entity-list">
+                  {shell.pdfVisualTemplatesSettings.history.slice(0, 12).map((entry: PdfTemplateHistoryEntry) => (
+                    <article key={entry.id} className="entity-card">
+                      <div>
+                        <h3>{entry.template_nome}</h3>
+                        <p>
+                          Ação: <strong>{entry.action}</strong> | {formatDateTime(entry.created_at)}
+                        </p>
+                      </div>
+                      <div className="actions-row">
+                        <button
+                          type="button"
+                          className="ghost"
+                          disabled={!canManageUsers}
+                          onClick={() => actions.rollbackTemplateByHistory(entry.id)}
+                        >
+                          Restaurar esta versão
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <p className="muted">
-              Ajuste os campos e clique em <strong>Salvar template</strong>. O template ativo passa a ser usado na próxima geração do quadrante.
+              Ajuste os campos e clique em <strong>Salvar rascunho</strong>. Para uso em produção, clique em
+              <strong> Publicar template ativo</strong>.
             </p>
 
             <div className="actions-row">
               <button type="submit" disabled={!canManageUsers}>
-                Salvar template
+                Salvar rascunho
               </button>
             </div>
           </form>
@@ -3520,7 +3548,7 @@ function EncountersScreen({ shell, actions }: { shell: any; actions: any }) {
   return (
     <section className="page-stack">
       <div className="panel">
-        <h2>Novo encontro</h2>
+        <h2>{shell.encounterEditingId ? "Editar encontro" : "Novo encontro"}</h2>
         <form className="grid-form three" onSubmit={actions.handleCreateEncounter}>
           <label>
             Nome do encontro
@@ -3551,7 +3579,24 @@ function EncountersScreen({ shell, actions }: { shell: any; actions: any }) {
               onChange={(event) => actions.setEncounterForm((prev: any) => ({ ...prev, dataFim: event.target.value }))}
             />
           </label>
-          <button type="submit" disabled={!canManage}>Cadastrar encontro</button>
+          <div className="actions-row">
+            <button type="submit" disabled={!canManage}>
+              {shell.encounterEditingId ? "Salvar edição" : "Cadastrar encontro"}
+            </button>
+            {shell.encounterEditingId && (
+              <button
+                type="button"
+                className="ghost"
+                disabled={!canManage}
+                onClick={() => {
+                  actions.setEncounterEditingId(null);
+                  actions.setEncounterForm({ nome: "", dataInicio: "", dataFim: "" });
+                }}
+              >
+                Cancelar edição
+              </button>
+            )}
+          </div>
         </form>
       </div>
 
@@ -3559,10 +3604,11 @@ function EncountersScreen({ shell, actions }: { shell: any; actions: any }) {
         <h2>Encontros</h2>
         <div className="cards-grid">
           {shell.encounters.map((encounter: Encounter) => (
-            <article
+            <InteractiveCard
               key={encounter.id}
               className="main-card clickable"
-              onClick={() => navigate(`/encounters/${encounter.id}`)}
+              ariaLabel={`Abrir encontro ${displayEncounterName(encounter)}`}
+              onActivate={() => navigate(`/encounters/${encounter.id}`)}
             >
               <h3>{displayEncounterName(encounter)}</h3>
               <p>
@@ -3577,6 +3623,22 @@ function EncountersScreen({ shell, actions }: { shell: any; actions: any }) {
                 >
                   Abrir gestão
                 </Link>
+                <button
+                  className="ghost"
+                  disabled={!canManage}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    actions.setEncounterForm({
+                      nome: displayEncounterName(encounter),
+                      dataInicio: toInputDateString(encounter.data_inicio || encounter.data_encontro || ""),
+                      dataFim: toInputDateString(encounter.data_fim || encounter.data_encontro || "")
+                    });
+                    actions.setEncounterEditingId(encounter.id);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  Editar
+                </button>
                 <button
                   disabled={!canGeneratePdf}
                   onClick={(event) => {
@@ -3597,7 +3659,7 @@ function EncountersScreen({ shell, actions }: { shell: any; actions: any }) {
                   Excluir
                 </button>
               </div>
-            </article>
+            </InteractiveCard>
           ))}
         </div>
       </div>
@@ -3629,22 +3691,34 @@ function EncounterHubScreen({ shell, actions }: { shell: any; actions: any }) {
         </div>
         <div className="cards-grid">
           {canTeams && (
-            <article className="main-card clickable" onClick={() => navigate(`/encounters/${encounterId}/teams`)}>
+            <InteractiveCard
+              className="main-card clickable"
+              ariaLabel="Abrir gestão de equipes"
+              onActivate={() => navigate(`/encounters/${encounterId}/teams`)}
+            >
               <h3>Equipes</h3>
               <p>Gerencie equipes de trabalho em telas dedicadas.</p>
-            </article>
+            </InteractiveCard>
           )}
           {canTeams && (
-            <article className="main-card clickable" onClick={() => navigate(`/encounters/${encounterId}/circles`)}>
+            <InteractiveCard
+              className="main-card clickable"
+              ariaLabel="Abrir gestão de círculos"
+              onActivate={() => navigate(`/encounters/${encounterId}/circles`)}
+            >
               <h3>Círculos</h3>
               <p>Gerencie círculos e seus dados de liderança.</p>
-            </article>
+            </InteractiveCard>
           )}
           {canAssets && (
-            <article className="main-card clickable" onClick={() => navigate(`/encounters/${encounterId}/assets`)}>
+            <InteractiveCard
+              className="main-card clickable"
+              ariaLabel="Abrir gestão de capas e separadores"
+              onActivate={() => navigate(`/encounters/${encounterId}/assets`)}
+            >
               <h3>Capas e separadores</h3>
               <p>Envie artes A4 para capa, contra capa e separadores.</p>
-            </article>
+            </InteractiveCard>
           )}
         </div>
       </div>
@@ -3743,7 +3817,7 @@ function TeamListScreen({
                   />
                 </label>
                 <label>
-                  Slogan
+                  Nome escolhido do Círculo
                   <input
                     disabled={!canManageTeams}
                     value={shell.teamForm.slogan}

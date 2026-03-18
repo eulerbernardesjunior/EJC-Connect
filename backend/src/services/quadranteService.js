@@ -198,10 +198,16 @@ function normalizePdfVisualTemplates(rawValue) {
   const activeTemplateIdRaw = String(raw.active_template_id || "").trim();
   const activeTemplate =
     normalizedTemplates.find((item) => item.id === activeTemplateIdRaw) || normalizedTemplates[0];
+  const publishedTemplateIdRaw = String(raw.published_template_id || "").trim();
+  const publishedTemplate =
+    normalizedTemplates.find((item) => item.id === publishedTemplateIdRaw) || activeTemplate || normalizedTemplates[0];
+  const history = Array.isArray(raw.history) ? raw.history : [];
 
   return {
     active_template_id: activeTemplate?.id || DEFAULT_TEMPLATE_ID,
-    templates: normalizedTemplates
+    published_template_id: publishedTemplate?.id || activeTemplate?.id || DEFAULT_TEMPLATE_ID,
+    templates: normalizedTemplates,
+    history
   };
 }
 
@@ -404,8 +410,11 @@ async function loadPdfVisualTemplatesSettings() {
 
 function resolvePdfVisualConfig(pdfVisualTemplates) {
   const normalized = normalizePdfVisualTemplates(pdfVisualTemplates || {});
+  const published = normalized.templates.find((template) => template.id === normalized.published_template_id);
   const active = normalized.templates.find((template) => template.id === normalized.active_template_id);
-  return normalizePdfVisualConfig(active?.config || normalized.templates[0]?.config || DEFAULT_PDF_VISUAL_CONFIG);
+  return normalizePdfVisualConfig(
+    published?.config || active?.config || normalized.templates[0]?.config || DEFAULT_PDF_VISUAL_CONFIG
+  );
 }
 
 function escapeCssContent(value) {

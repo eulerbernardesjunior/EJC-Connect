@@ -21,7 +21,9 @@ const PHOTO_SHAPES = new Set(["SQUARE", "ROUNDED", "CIRCLE", "PASSPORT_3X4"]);
 const TABLE_MODELS = new Set(["COMPACT", "STANDARD", "COMFORTABLE"]);
 const LEADERSHIP_STYLES = new Set(["SOFT", "BORDERED", "MINIMAL"]);
 const MAX_TEMPLATES = 20;
+const MAX_TEMPLATE_HISTORY = 50;
 const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+const TEMPLATE_HISTORY_ACTIONS = new Set(["SAVE", "PUBLISH", "ROLLBACK", "CLONE"]);
 
 const DEFAULT_PDF_VISUAL_CONFIG = Object.freeze({
   foto_equipe_largura_mm: 150,
@@ -246,6 +248,19 @@ function normalizeTemplateName(raw, fallbackName) {
   return cleaned || fallbackName;
 }
 
+function normalizeHistoryAction(raw) {
+  const action = String(raw || "").trim().toUpperCase();
+  return TEMPLATE_HISTORY_ACTIONS.has(action) ? action : "SAVE";
+}
+
+function normalizeHistoryTimestamp(raw) {
+  const candidate = String(raw || "").trim();
+  if (!candidate) return new Date().toISOString();
+  const parsed = new Date(candidate);
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString();
+  return parsed.toISOString();
+}
+
 function normalizePdfVisualTemplates(rawValue) {
   const raw = rawValue && typeof rawValue === "object" ? rawValue : {};
   let rawTemplates = Array.isArray(raw.templates) ? raw.templates : [];
@@ -305,8 +320,27 @@ function normalizePdfVisualTemplates(rawValue) {
   const active_template_id = templates.some((template) => template.id === preferredActive)
     ? preferredActive
     : templates[0].id;
+  const preferredPublished = String(raw.published_template_id || "").trim();
+  const published_template_id = templates.some((template) => template.id === preferredPublished)
+    ? preferredPublished
+    : active_template_id;
 
-  return { active_template_id, templates };
+  const historyRaw = Array.isArray(raw.history) ? raw.history : [];
+  const history = historyRaw.slice(0, MAX_TEMPLATE_HISTORY).map((entry, index) => {
+    const source = entry && typeof entry === "object" ? entry : {};
+    const template_id = String(source.template_id || "").trim();
+    const targetTemplate = templates.find((template) => template.id === template_id) || templates[0];
+    return {
+      id: String(source.id || `history-${index + 1}`).slice(0, 80),
+      template_id: targetTemplate.id,
+      template_nome: normalizeTemplateName(source.template_nome, targetTemplate.nome),
+      action: normalizeHistoryAction(source.action),
+      created_at: normalizeHistoryTimestamp(source.created_at),
+      snapshot: normalizePdfVisualConfig(source.snapshot || targetTemplate.config)
+    };
+  });
+
+  return { active_template_id, published_template_id, templates, history };
 }
 
 async function loadPdfTitleSettings() {
@@ -452,14 +486,20 @@ router.put(
     const current = await loadPdfVisualTemplatesSettings();
     const incoming = req.body || {};
     const requestedTemplates = Array.isArray(incoming.templates) ? incoming.templates : [];
+    const requestedHistory = Array.isArray(incoming.history) ? incoming.history : [];
 
     if (requestedTemplates.length > MAX_TEMPLATES) {
       return res.status(400).json({ error: `Limite de ${MAX_TEMPLATES} templates.` });
     }
+    if (requestedHistory.length > MAX_TEMPLATE_HISTORY) {
+      return res.status(400).json({ error: `Limite de ${MAX_TEMPLATE_HISTORY} itens no historico.` });
+    }
 
     const next = await savePdfVisualTemplatesSettings({
       active_template_id: incoming.active_template_id,
-      templates: requestedTemplates
+      published_template_id: incoming.published_template_id,
+      templates: requestedTemplates,
+      history: requestedHistory
     });
 
     await logAudit({
@@ -470,10 +510,14 @@ router.put(
       details: {
         before: {
           active_template_id: current.active_template_id,
+          published_template_id: current.published_template_id,
+          history_count: Array.isArray(current.history) ? current.history.length : 0,
           templates: current.templates.map((item) => ({ id: item.id, nome: item.nome }))
         },
         after: {
           active_template_id: next.active_template_id,
+          published_template_id: next.published_template_id,
+          history_count: Array.isArray(next.history) ? next.history.length : 0,
           templates: next.templates.map((item) => ({ id: item.id, nome: item.nome }))
         }
       }
