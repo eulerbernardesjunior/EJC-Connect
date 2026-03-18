@@ -1,135 +1,247 @@
 # EJC Connect
 
-Plataforma full stack para gestao de encontros de jovens cristaos com:
-- Backend Node.js + Express + PostgreSQL
-- Frontend React + Vite + TypeScript
-- Importacao XLSX/CSV com Pairing Mode para casais/tios
-- Geracao do Quadrante em PDF A4 (Puppeteer)
-- Deploy self-hosted via Nginx + PM2 (modo legado)
-- Deploy containerizado via Docker Compose (recomendado)
+Plataforma de gestao para encontros de jovens cristaos, com foco em:
+- cadastro e organizacao de encontros, equipes e circulos
+- importacao inteligente de planilhas (XLSX/CSV)
+- geracao do Quadrante em PDF (A4) com layout editorial
+- controle de usuarios, permissoes e auditoria
+- deploy self-hosted em Docker (recomendado)
 
-## Estrutura
+Este repositorio e somente do **EJC-Connect (Quadrante)**.
 
-- `backend/` API, migrations, importador e gerador de PDF
-- `frontend/` painel web
-- `deploy/install.sh` instalacao completa em Ubuntu 24.04 (sem Docker)
-- `docker-compose.yml` stack completa Docker (db + backend + web)
+---
 
-## Docker (recomendado para producao)
+## 1. Visao geral do produto
 
-1. Copie o arquivo de variaveis:
+O EJC Connect centraliza o fluxo completo do Quadrante:
+
+1. cadastrar encontro
+2. cadastrar equipes e circulos
+3. cadastrar/importar membros por cargo
+4. subir capas, separadores, cartazes e artes
+5. gerar PDF final com ordem definida
+
+Tambem oferece:
+- login e controle de acesso
+- permissoes por funcionalidade
+- escopo por equipe (usuario pode ficar restrito a equipes especificas)
+- log de auditoria
+
+---
+
+## 2. Stack tecnica
+
+- Backend: Node.js + Express + PostgreSQL
+- Frontend: React + Vite + TypeScript
+- PDF engine: Puppeteer (render HTML/CSS em PDF)
+- Infra recomendada: Docker Compose
+- CI/CD: GitHub Actions com deploy remoto para aaPanel via SSH
+
+---
+
+## 3. Estrutura do repositorio
+
+- `backend/` API, regras de negocio, importador, PDF engine, migrations
+- `frontend/` painel web administrativo
+- `deploy/` scripts de instalacao, testes e deploy remoto
+- `.github/workflows/ci-cd-aapanel.yml` pipeline CI/CD
+- `docker-compose.yml` stack Docker principal
+
+---
+
+## 4. Como rodar localmente (WSL + Docker)
+
+### 4.1 Pre-requisitos
+
+- Docker funcionando no WSL
+- Porta web livre (padrao do projeto local: `8080`)
+
+### 4.2 Subir o sistema
 
 ```bash
-cp .env.docker.example .env
-```
-
-2. Edite o `.env` e ajuste pelo menos:
-- `POSTGRES_PASSWORD`
-- `JWT_SECRET`
-- `ADMIN_PASSWORD`
-
-3. Suba o stack:
-
-```bash
+cd "/mnt/c/Users/euler.junior/Documents/New project"
 docker compose up -d --build
 ```
 
-4. Acesse:
-- App: `http://localhost:${APP_PORT}` (padrao `80`)
-- Health API: `http://localhost/api/health`
-
-Comandos uteis:
+### 4.3 Validar servicos
 
 ```bash
 docker compose ps
-docker compose logs -f backend
-docker compose logs -f web
-docker compose down
+curl http://localhost:8080/api/health
 ```
 
-Persistencia no Docker:
-- Banco: volume `postgres_data`
-- Uploads/imagens: volume `uploads_data`
+Esperado no health:
 
-Observacoes:
-- O backend executa `npm run migrate` automaticamente ao iniciar.
-- Se `ADMIN_PASSWORD` estiver definido, o container garante o usuario admin via `bootstrap:admin`.
-
-## Instalacao automatica (Ubuntu 24.04, sem Docker)
-
-No servidor Ubuntu:
-
-```bash
-chmod +x deploy/install.sh
-sudo DOMAIN=seu-dominio.com DB_PASSWORD='senha-forte' ./deploy/install.sh
+```json
+{"status":"ok"}
 ```
 
-Variaveis opcionais:
-- `BACKEND_PORT` (padrao: `3000`)
-- `DB_PORT` (padrao: `5432`)
-- `DB_NAME` (padrao: `ejc_connect`)
-- `DB_USER` (padrao: `ejc_connect`)
-- `DB_PASSWORD` (padrao: `ejc_connect`)
-- `JWT_SECRET` (padrao: gerado automaticamente no install)
-- `JWT_EXPIRES_IN` (padrao: `12h`)
-- `ADMIN_NAME` (padrao: `Administrador EJC`)
-- `ADMIN_EMAIL` (padrao: `admin@ejc.local`)
-- `ADMIN_PASSWORD` (padrao: senha aleatoria gerada no install)
-- `DOMAIN` (padrao: `_`)
-- `APP_ROOT` (padrao: `/opt/ejc-connect`)
-- `WEB_ROOT` (padrao: `/var/www/ejc-connect`)
+### 4.4 Acesso no browser Windows
 
-## Desenvolvimento local
+- App: `http://localhost:8080`
 
-### Backend
+Observacao: se existir Nginx/Apache no host usando porta 80, mantenha `APP_PORT=8080` no `.env`.
 
-```bash
-cd backend
-cp .env.example .env
-npm install
-npm run migrate
-npm run dev
-```
+---
 
-### Frontend
+## 5. Fluxo funcional no painel
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+1. **Encontros**
+- criar encontro com nome, data inicio e data fim
 
-API local: `http://localhost:3000/api/health`
+2. **Gestao do encontro**
+- acessar cards de Equipes, Circulos e Capas/Artes
 
-## Verificacao automatica no instalador
+3. **Equipes e Circulos**
+- criar/editar/excluir
+- definir ordem de impressao no PDF
+- cadastrar membros manualmente ou importar planilha
+- upload de imagens com crop
 
-O `deploy/install.sh` falha automaticamente se:
-- API backend nao responder em `http://127.0.0.1:<BACKEND_PORT>/api/health`
-- API via Nginx nao responder em `http://127.0.0.1/api/health`
-- processo PM2 `ejc-connect-backend` nao for encontrado
+4. **Capas e artes**
+- enviar imagens A4 (capa, separadores, cartaz, musica, convite, contracapa)
 
-Ao final da instalacao, o script imprime o e-mail e senha do usuario administrador inicial.
+5. **PDF**
+- gerar quadrante completo do encontro
+- gerar quadrante parcial por equipe/circulo
 
-## Teste de runtime autenticado
+---
 
-Depois da instalacao, execute:
+## 6. Importacao inteligente (XLSX/CSV)
 
-```bash
-ADMIN_PASSWORD='<senha-mostrada-no-install>' ./deploy/test_install_runtime.sh
-```
+O importador identifica secoes e cargos para aplicar regra correta:
 
-## CI/CD GitHub -> aaPanel
+- cargos com `Tio` ou `Tios` podem ser tratados como casal (pairing mode)
+- cargos sem `Tio/Tios` sao sempre individuais
+- suporte a particularidades de equipes especificas (ex.: Sala, Tios Carona)
 
-Pipeline pronto no repositório:
+Se a importacao nao inserir registros, o sistema retorna detalhes de linhas e motivos para facilitar ajuste da planilha.
+
+---
+
+## 7. Regras de PDF (Quadrante)
+
+### 7.1 Ordem editorial suportada
+
+1. Capa  
+2. Separador de Circulos  
+3. Cartaz do Circulo  
+4. Dados dos Circulos  
+5. Separador de Equipes  
+6. Dados das Equipes  
+7. Letra da Musica Tema  
+8. Convite Pos Encontro  
+9. Contracapa
+
+### 7.2 Template visual (configuravel)
+
+Em `Configuracoes > Templates PDF`, e possivel ajustar:
+- tamanho padrao de fotos
+- formato de foto no circulo
+- **formato separado para lideranca e para participantes no circulo**
+- modelo de tabela das equipes
+- fontes
+- margens
+- rodape
+- marca d'agua
+- estilo das caixas de lideranca
+
+Cada conjunto pode ser salvo como template e ativado.
+
+---
+
+## 8. Seguranca e controle de acesso
+
+- login obrigatorio
+- JWT para autenticacao
+- permissoes por funcionalidade (view/manage/import/generate etc.)
+- escopo por equipe para restringir acesso de usuarios
+- auditoria de acoes (create, update, delete, import, upload)
+
+---
+
+## 9. Deploy em producao (aaPanel)
+
+Pipeline pronto no GitHub Actions:
 
 - `.github/workflows/ci-cd-aapanel.yml`
 
-Guia completo de configuracao:
+Fluxo:
+
+1. push em `main`
+2. job `Validate Build`
+3. job `Deploy To aaPanel`
+
+Guia detalhado:
 
 - `deploy/GITHUB_ACTIONS_CICD.md`
 
-Resumo:
+---
 
-1. Configure os secrets do GitHub Actions.
-2. Faça push na branch `main`.
-3. O workflow valida build e faz deploy automatico via SSH no aaPanel.
+## 10. Versionamento e releases
+
+Recomendacao simples:
+
+- commits semanticos (`feat`, `fix`, `docs`, `chore`)
+- tags anotadas para marcos de producao
+
+Exemplo:
+
+```bash
+git tag -a ejc-connect-v2026.03.18 -m "release: descricao"
+git push origin ejc-connect-v2026.03.18
+```
+
+---
+
+## 11. Comandos uteis
+
+```bash
+# status
+docker compose ps
+
+# logs backend
+docker compose logs -f backend
+
+# logs web (nginx)
+docker compose logs -f web
+
+# reiniciar servico
+docker compose restart web
+
+# rebuild completo
+docker compose up -d --build
+```
+
+---
+
+## 12. Troubleshooting rapido
+
+### `web` nao sobe / Nginx caiu
+
+Causa comum: porta ocupada (`address already in use`).
+
+Solucao:
+- alterar `APP_PORT` no `.env` (ex.: `8080`)
+- subir novamente:
+
+```bash
+docker compose up -d web
+```
+
+### `api/health` retorna 502
+
+Backend ainda iniciando ou erro de variavel de ambiente.
+
+Verificar:
+
+```bash
+docker compose logs --tail=200 backend
+```
+
+---
+
+## 13. Licenca e autoria
+
+Projeto interno EJC. Ajuste este bloco conforme politica da equipe (licenca formal, responsaveis e contatos).
+
