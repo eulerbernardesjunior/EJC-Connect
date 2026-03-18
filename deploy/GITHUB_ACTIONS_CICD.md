@@ -3,6 +3,8 @@
 Este projeto ja esta preparado com workflow em:
 
 - `.github/workflows/ci-cd-aapanel.yml`
+- `deploy/server_autodeploy_from_github.sh`
+- `deploy/install_server_autodeploy_timer.sh`
 
 ## 1. Pré-requisitos
 
@@ -48,15 +50,24 @@ Crie:
 
 1. Edite no VS Code (WSL).
 2. Faça `git add`, `git commit` e `git push origin main`.
-3. O GitHub Actions executa:
-   - validacao backend/frontend;
-   - build do frontend;
-   - deploy no aaPanel via SSH;
-   - health check final.
+3. O GitHub Actions executa validacao (backend/frontend/build).
+4. O servidor aaPanel verifica o `main` periodicamente e aplica deploy automatico.
 
-Deploy manual:
+Deploy por Actions (opcional):
 
-- Aba `Actions` -> workflow `EJC Connect CI/CD (aaPanel)` -> `Run workflow`.
+- Defina `ENABLE_ACTIONS_DEPLOY=true` em `Settings > Secrets and variables > Actions > Variables`.
+- Com isso, o job de deploy por SSH do workflow tambem sera executado.
+
+Deploy automatico no servidor (recomendado):
+
+```bash
+# executar no servidor
+chmod +x /www/wwwroot/ejc-connect/deploy/install_server_autodeploy_timer.sh
+SCRIPT_SOURCE_PATH=/www/wwwroot/ejc-connect/deploy/server_autodeploy_from_github.sh \
+bash /www/wwwroot/ejc-connect/deploy/install_server_autodeploy_timer.sh
+```
+
+Timer padrao: a cada `2min` (pode ajustar via `TIMER_FREQUENCY`).
 
 ## 5. O que o deploy remoto faz
 
