@@ -73,9 +73,9 @@ jobs:
       - name: Upload archive to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.AAPANEL_HOST != '' && secrets.AAPANEL_HOST || env.DEPLOY_HOST_DEFAULT }}
-          username: ${{ secrets.AAPANEL_USER != '' && secrets.AAPANEL_USER || env.DEPLOY_USER_DEFAULT }}
-          port: ${{ secrets.AAPANEL_PORT != '' && secrets.AAPANEL_PORT || env.DEPLOY_PORT_DEFAULT }}
+          host: ${{ env.DEPLOY_HOST_DEFAULT }}
+          username: ${{ env.DEPLOY_USER_DEFAULT }}
+          port: ${{ env.DEPLOY_PORT_DEFAULT }}
           key: ${{ secrets.AAPANEL_SSH_PRIVATE_KEY }}
           password: ${{ secrets.AAPANEL_SSH_PASSWORD }}
           source: "ejc-connect-deploy.tgz"
@@ -93,9 +93,9 @@ jobs:
           HEALTH_URL_DEFAULT: ${{ env.HEALTH_URL_DEFAULT }}
           PROJECT_NAME_DEFAULT: ${{ env.PROJECT_NAME_DEFAULT }}
         with:
-          host: ${{ secrets.AAPANEL_HOST != '' && secrets.AAPANEL_HOST || env.DEPLOY_HOST_DEFAULT }}
-          username: ${{ secrets.AAPANEL_USER != '' && secrets.AAPANEL_USER || env.DEPLOY_USER_DEFAULT }}
-          port: ${{ secrets.AAPANEL_PORT != '' && secrets.AAPANEL_PORT || env.DEPLOY_PORT_DEFAULT }}
+          host: ${{ env.DEPLOY_HOST_DEFAULT }}
+          username: ${{ env.DEPLOY_USER_DEFAULT }}
+          port: ${{ env.DEPLOY_PORT_DEFAULT }}
           key: ${{ secrets.AAPANEL_SSH_PRIVATE_KEY }}
           password: ${{ secrets.AAPANEL_SSH_PASSWORD }}
           envs: APP_DIR,HEALTH_URL,PROJECT_NAME,DEPLOY_ARCHIVE,APP_DIR_DEFAULT,HEALTH_URL_DEFAULT,PROJECT_NAME_DEFAULT
