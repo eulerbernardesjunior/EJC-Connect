@@ -12,6 +12,9 @@ env:
   APP_DIR_DEFAULT: "/www/wwwroot/ejc-connect"
   HEALTH_URL_DEFAULT: "http://127.0.0.1:8080/api/health"
   PROJECT_NAME_DEFAULT: "ejc-connect"
+  DEPLOY_HOST_DEFAULT: "177.185.240.238"
+  DEPLOY_USER_DEFAULT: "root"
+  DEPLOY_PORT_DEFAULT: "22"
 
 jobs:
   validate:
@@ -70,10 +73,11 @@ jobs:
       - name: Upload archive to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.AAPANEL_HOST }}
-          username: ${{ secrets.AAPANEL_USER }}
-          port: ${{ secrets.AAPANEL_PORT }}
+          host: ${{ secrets.AAPANEL_HOST != '' && secrets.AAPANEL_HOST || env.DEPLOY_HOST_DEFAULT }}
+          username: ${{ secrets.AAPANEL_USER != '' && secrets.AAPANEL_USER || env.DEPLOY_USER_DEFAULT }}
+          port: ${{ secrets.AAPANEL_PORT != '' && secrets.AAPANEL_PORT || env.DEPLOY_PORT_DEFAULT }}
           key: ${{ secrets.AAPANEL_SSH_PRIVATE_KEY }}
+          password: ${{ secrets.AAPANEL_SSH_PASSWORD }}
           source: "ejc-connect-deploy.tgz"
           target: "/tmp"
           overwrite: true
@@ -89,10 +93,11 @@ jobs:
           HEALTH_URL_DEFAULT: ${{ env.HEALTH_URL_DEFAULT }}
           PROJECT_NAME_DEFAULT: ${{ env.PROJECT_NAME_DEFAULT }}
         with:
-          host: ${{ secrets.AAPANEL_HOST }}
-          username: ${{ secrets.AAPANEL_USER }}
-          port: ${{ secrets.AAPANEL_PORT }}
+          host: ${{ secrets.AAPANEL_HOST != '' && secrets.AAPANEL_HOST || env.DEPLOY_HOST_DEFAULT }}
+          username: ${{ secrets.AAPANEL_USER != '' && secrets.AAPANEL_USER || env.DEPLOY_USER_DEFAULT }}
+          port: ${{ secrets.AAPANEL_PORT != '' && secrets.AAPANEL_PORT || env.DEPLOY_PORT_DEFAULT }}
           key: ${{ secrets.AAPANEL_SSH_PRIVATE_KEY }}
+          password: ${{ secrets.AAPANEL_SSH_PASSWORD }}
           envs: APP_DIR,HEALTH_URL,PROJECT_NAME,DEPLOY_ARCHIVE,APP_DIR_DEFAULT,HEALTH_URL_DEFAULT,PROJECT_NAME_DEFAULT
           script_stop: true
           script: |

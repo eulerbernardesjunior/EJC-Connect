@@ -17,9 +17,9 @@ No seu WSL:
 
 ```bash
 chmod +x deploy/setup_cicd_ssh_key.sh
-AAPANEL_HOST=177.185.252.24 \
+AAPANEL_HOST=177.185.240.238 \
 AAPANEL_PORT=22 \
-AAPANEL_USER=ubuntu \
+AAPANEL_USER=root \
 AAPANEL_PASSWORD='SUA_SENHA' \
 bash deploy/setup_cicd_ssh_key.sh
 ```
@@ -35,10 +35,11 @@ No repositório: `Settings > Secrets and variables > Actions > New repository se
 
 Crie:
 
-- `AAPANEL_HOST` = `177.185.252.24`
+- `AAPANEL_HOST` = `177.185.240.238` (opcional, se vazio usa default do workflow)
 - `AAPANEL_PORT` = `22`
-- `AAPANEL_USER` = `ubuntu`
-- `AAPANEL_SSH_PRIVATE_KEY` = conteudo do arquivo `~/.ssh/ejc_connect_github_actions_ed25519`
+- `AAPANEL_USER` = `root` (opcional, se vazio usa default do workflow)
+- `AAPANEL_SSH_PRIVATE_KEY` = conteudo do arquivo `~/.ssh/ejc_connect_github_actions_ed25519` (recomendado)
+- `AAPANEL_SSH_PASSWORD` = senha SSH do servidor (opcional, fallback se nao usar chave)
 - `AAPANEL_APP_DIR` = `/www/wwwroot/ejc-connect` (opcional, recomendado)
 - `AAPANEL_HEALTH_URL` = `http://127.0.0.1:8080/api/health` (opcional, recomendado)
 - `AAPANEL_PROJECT_NAME` = `ejc-connect` (opcional, recomendado)
