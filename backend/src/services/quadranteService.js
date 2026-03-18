@@ -50,9 +50,9 @@ function sanitizeText(raw, fallback = "", maxLength = 80) {
   return value.slice(0, maxLength);
 }
 
-function normalizePhotoShape(raw) {
+function normalizePhotoShape(raw, fallback = DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo) {
   const value = normalize(raw);
-  return PHOTO_SHAPES.has(value) ? value : DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo;
+  return PHOTO_SHAPES.has(value) ? value : fallback;
 }
 
 function normalizeTableModel(raw) {
@@ -67,6 +67,12 @@ function normalizeLeadershipStyle(raw) {
 
 function normalizePdfVisualConfig(rawConfig = {}) {
   const raw = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+  const legacyCircleShape = normalizePhotoShape(
+    raw.formato_foto_circulo,
+    DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo
+  );
+  const leadershipCircleShape = normalizePhotoShape(raw.formato_foto_lideranca_circulo, legacyCircleShape);
+  const participantCircleShape = normalizePhotoShape(raw.formato_foto_participante_circulo, legacyCircleShape);
   return {
     foto_equipe_largura_mm: clampNumber(
       raw.foto_equipe_largura_mm,
@@ -104,7 +110,10 @@ function normalizePdfVisualConfig(rawConfig = {}) {
       100,
       DEFAULT_PDF_VISUAL_CONFIG.foto_participante_altura_px
     ),
-    formato_foto_circulo: normalizePhotoShape(raw.formato_foto_circulo),
+    // `formato_foto_circulo` mantido por compatibilidade com versões anteriores.
+    formato_foto_circulo: participantCircleShape,
+    formato_foto_lideranca_circulo: leadershipCircleShape,
+    formato_foto_participante_circulo: participantCircleShape,
     modelo_tabela_equipe: normalizeTableModel(raw.modelo_tabela_equipe),
     fonte_base: normalizeFontFamily(raw.fonte_base, DEFAULT_PDF_VISUAL_CONFIG.fonte_base),
     fonte_slogan: normalizeFontFamily(raw.fonte_slogan, DEFAULT_PDF_VISUAL_CONFIG.fonte_slogan),
@@ -162,6 +171,8 @@ function normalizePdfVisualTemplates(rawValue) {
   const looksLikeLegacySingleConfig =
     templates.length === 0 &&
     (raw.formato_foto_circulo ||
+      raw.formato_foto_lideranca_circulo ||
+      raw.formato_foto_participante_circulo ||
       raw.modelo_tabela_equipe ||
       raw.margem_topo_mm !== undefined ||
       raw.rodape_ativo !== undefined);
@@ -224,6 +235,8 @@ const DEFAULT_PDF_VISUAL_CONFIG = Object.freeze({
   foto_participante_largura_px: 30,
   foto_participante_altura_px: 30,
   formato_foto_circulo: "ROUNDED",
+  formato_foto_lideranca_circulo: "ROUNDED",
+  formato_foto_participante_circulo: "ROUNDED",
   modelo_tabela_equipe: "STANDARD",
   fonte_base: "Montserrat, Arial, sans-serif",
   fonte_slogan: "Caveat, cursive",
@@ -487,44 +500,61 @@ function formatFooter(encounter) {
 }
 
 function resolveCirclePhotoGeometry(pdfVisualConfig) {
-  const shape = normalizePhotoShape(pdfVisualConfig.formato_foto_circulo);
+  const legacyShape = normalizePhotoShape(
+    pdfVisualConfig.formato_foto_circulo,
+    DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo
+  );
+  const leaderShape = normalizePhotoShape(pdfVisualConfig.formato_foto_lideranca_circulo, legacyShape);
+  const participantShape = normalizePhotoShape(pdfVisualConfig.formato_foto_participante_circulo, legacyShape);
 
-  let leaderWidth = Number(pdfVisualConfig.foto_lider_largura_mm);
-  let leaderHeight = Number(pdfVisualConfig.foto_lider_altura_mm);
-  let participantWidth = Number(pdfVisualConfig.foto_participante_largura_px);
-  let participantHeight = Number(pdfVisualConfig.foto_participante_altura_px);
+  const resolveShape = (shape, rawWidth, rawHeight, minWidthForPassport) => {
+    let width = Number(rawWidth);
+    let height = Number(rawHeight);
 
-  if (shape === "SQUARE" || shape === "ROUNDED" || shape === "CIRCLE") {
-    const leaderSide = Math.min(leaderWidth, leaderHeight);
-    const participantSide = Math.min(participantWidth, participantHeight);
-    leaderWidth = leaderSide;
-    leaderHeight = leaderSide;
-    participantWidth = participantSide;
-    participantHeight = participantSide;
-  } else if (shape === "PASSPORT_3X4") {
-    leaderWidth = Math.max(8, Math.round((leaderHeight * 3) / 4));
-    participantWidth = Math.max(14, Math.round((participantHeight * 3) / 4));
-  }
+    if (shape === "SQUARE" || shape === "ROUNDED" || shape === "CIRCLE") {
+      const side = Math.min(width, height);
+      width = side;
+      height = side;
+    } else if (shape === "PASSPORT_3X4") {
+      width = Math.max(minWidthForPassport, Math.round((height * 3) / 4));
+    }
 
-  const borderRadius = (() => {
-    if (shape === "CIRCLE") return "999px";
-    if (shape === "ROUNDED") return "6px";
-    if (shape === "PASSPORT_3X4") return "4px";
-    return "0px";
-  })();
+    const borderRadius = (() => {
+      if (shape === "CIRCLE") return "999px";
+      if (shape === "ROUNDED") return "6px";
+      if (shape === "PASSPORT_3X4") return "4px";
+      return "0px";
+    })();
+
+    return { width, height, borderRadius };
+  };
+
+  const leader = resolveShape(
+    leaderShape,
+    pdfVisualConfig.foto_lider_largura_mm,
+    pdfVisualConfig.foto_lider_altura_mm,
+    8
+  );
+  const participant = resolveShape(
+    participantShape,
+    pdfVisualConfig.foto_participante_largura_px,
+    pdfVisualConfig.foto_participante_altura_px,
+    14
+  );
 
   return {
-    shape,
-    leaderWidth,
-    leaderHeight,
-    participantWidth,
-    participantHeight,
-    borderRadius
+    leaderShape,
+    participantShape,
+    leaderWidth: leader.width,
+    leaderHeight: leader.height,
+    leaderBorderRadius: leader.borderRadius,
+    participantWidth: participant.width,
+    participantHeight: participant.height,
+    participantBorderRadius: participant.borderRadius
   };
 }
 
 function renderCircleContent(encounter, team, members, pdfVisualConfig) {
-  const circleShapeClass = `circle-shape-${normalizePhotoShape(pdfVisualConfig?.formato_foto_circulo).toLowerCase()}`;
   const leadersTios = [];
   const leadersJovens = [];
   const participantes = [];
@@ -578,7 +608,7 @@ function renderCircleContent(encounter, team, members, pdfVisualConfig) {
   `;
 
   return `
-    <section class="page page-break ${circleShapeClass}">
+    <section class="page page-break">
       <div class="footer-bar">${footer}</div>
       <header class="circulo-header">
         <h1 style="color:${escapeHtml(team.cor_hex || "#333")}">${escapeHtml(team.nome)}</h1>
@@ -1008,7 +1038,7 @@ function pdfCss(
     .leader-photo {
       width: ${circlePhotoGeometry.leaderWidth}mm;
       height: ${circlePhotoGeometry.leaderHeight}mm;
-      border-radius: ${circlePhotoGeometry.borderRadius};
+      border-radius: ${circlePhotoGeometry.leaderBorderRadius};
       object-fit: cover;
       background: #e5e5e5;
       flex-shrink: 0;
@@ -1029,7 +1059,7 @@ function pdfCss(
     .participant-photo {
       width: ${circlePhotoGeometry.participantWidth}px;
       height: ${circlePhotoGeometry.participantHeight}px;
-      border-radius: ${circlePhotoGeometry.borderRadius};
+      border-radius: ${circlePhotoGeometry.participantBorderRadius};
       object-fit: cover;
       background: #eee;
       flex-shrink: 0;

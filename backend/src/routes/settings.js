@@ -31,6 +31,8 @@ const DEFAULT_PDF_VISUAL_CONFIG = Object.freeze({
   foto_participante_largura_px: 30,
   foto_participante_altura_px: 30,
   formato_foto_circulo: "ROUNDED",
+  formato_foto_lideranca_circulo: "ROUNDED",
+  formato_foto_participante_circulo: "ROUNDED",
   modelo_tabela_equipe: "STANDARD",
   fonte_base: "Montserrat, Arial, sans-serif",
   fonte_slogan: "Caveat, cursive",
@@ -114,9 +116,9 @@ function normalizeFontFamily(raw, fallback) {
   return value.slice(0, 120);
 }
 
-function normalizePhotoShape(raw) {
+function normalizePhotoShape(raw, fallback = DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo) {
   const value = String(raw || "").trim().toUpperCase();
-  return PHOTO_SHAPES.has(value) ? value : DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo;
+  return PHOTO_SHAPES.has(value) ? value : fallback;
 }
 
 function normalizeTableModel(raw) {
@@ -131,6 +133,12 @@ function normalizeLeadershipStyle(raw) {
 
 function normalizePdfVisualConfig(rawConfig = {}) {
   const raw = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+  const legacyCircleShape = normalizePhotoShape(
+    raw.formato_foto_circulo,
+    DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo
+  );
+  const leadershipCircleShape = normalizePhotoShape(raw.formato_foto_lideranca_circulo, legacyCircleShape);
+  const participantCircleShape = normalizePhotoShape(raw.formato_foto_participante_circulo, legacyCircleShape);
   return {
     foto_equipe_largura_mm: clampNumber(
       raw.foto_equipe_largura_mm,
@@ -168,7 +176,10 @@ function normalizePdfVisualConfig(rawConfig = {}) {
       100,
       DEFAULT_PDF_VISUAL_CONFIG.foto_participante_altura_px
     ),
-    formato_foto_circulo: normalizePhotoShape(raw.formato_foto_circulo),
+    // `formato_foto_circulo` mantido por compatibilidade com versões anteriores.
+    formato_foto_circulo: participantCircleShape,
+    formato_foto_lideranca_circulo: leadershipCircleShape,
+    formato_foto_participante_circulo: participantCircleShape,
     modelo_tabela_equipe: normalizeTableModel(raw.modelo_tabela_equipe),
     fonte_base: normalizeFontFamily(raw.fonte_base, DEFAULT_PDF_VISUAL_CONFIG.fonte_base),
     fonte_slogan: normalizeFontFamily(raw.fonte_slogan, DEFAULT_PDF_VISUAL_CONFIG.fonte_slogan),
@@ -242,6 +253,8 @@ function normalizePdfVisualTemplates(rawValue) {
   const looksLikeLegacySingleConfig =
     rawTemplates.length === 0 &&
     (raw.formato_foto_circulo ||
+      raw.formato_foto_lideranca_circulo ||
+      raw.formato_foto_participante_circulo ||
       raw.modelo_tabela_equipe ||
       raw.margem_topo_mm !== undefined ||
       raw.rodape_ativo !== undefined);

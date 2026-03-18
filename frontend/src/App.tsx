@@ -55,7 +55,10 @@ type PdfVisualConfig = {
   foto_lider_altura_mm: number;
   foto_participante_largura_px: number;
   foto_participante_altura_px: number;
+  // Compatibilidade com versões antigas do backend/template.
   formato_foto_circulo: PdfPhotoShape;
+  formato_foto_lideranca_circulo: PdfPhotoShape;
+  formato_foto_participante_circulo: PdfPhotoShape;
   modelo_tabela_equipe: PdfTableModel;
   fonte_base: string;
   fonte_slogan: string;
@@ -635,6 +638,8 @@ const DEFAULT_PDF_VISUAL_CONFIG: PdfVisualConfig = {
   foto_participante_largura_px: 30,
   foto_participante_altura_px: 30,
   formato_foto_circulo: "ROUNDED",
+  formato_foto_lideranca_circulo: "ROUNDED",
+  formato_foto_participante_circulo: "ROUNDED",
   modelo_tabela_equipe: "STANDARD",
   fonte_base: "Montserrat, Arial, sans-serif",
   fonte_slogan: "Caveat, cursive",
@@ -798,9 +803,15 @@ function normalizePdfVisualConfigClient(raw?: Partial<PdfVisualConfig> | null): 
   const photoShapeCandidates: PdfPhotoShape[] = ["SQUARE", "ROUNDED", "CIRCLE", "PASSPORT_3X4"];
   const tableModelCandidates: PdfTableModel[] = ["COMPACT", "STANDARD", "COMFORTABLE"];
   const leadershipCandidates: PdfLeadershipStyle[] = ["SOFT", "BORDERED", "MINIMAL"];
-  const photoShape = photoShapeCandidates.includes(input.formato_foto_circulo as PdfPhotoShape)
+  const legacyCircleShape = photoShapeCandidates.includes(input.formato_foto_circulo as PdfPhotoShape)
     ? (input.formato_foto_circulo as PdfPhotoShape)
     : DEFAULT_PDF_VISUAL_CONFIG.formato_foto_circulo;
+  const leadershipCircleShape = photoShapeCandidates.includes(input.formato_foto_lideranca_circulo as PdfPhotoShape)
+    ? (input.formato_foto_lideranca_circulo as PdfPhotoShape)
+    : legacyCircleShape;
+  const participantCircleShape = photoShapeCandidates.includes(input.formato_foto_participante_circulo as PdfPhotoShape)
+    ? (input.formato_foto_participante_circulo as PdfPhotoShape)
+    : legacyCircleShape;
   const tableModel = tableModelCandidates.includes(input.modelo_tabela_equipe as PdfTableModel)
     ? (input.modelo_tabela_equipe as PdfTableModel)
     : DEFAULT_PDF_VISUAL_CONFIG.modelo_tabela_equipe;
@@ -845,7 +856,9 @@ function normalizePdfVisualConfigClient(raw?: Partial<PdfVisualConfig> | null): 
       100,
       DEFAULT_PDF_VISUAL_CONFIG.foto_participante_altura_px
     ),
-    formato_foto_circulo: photoShape,
+    formato_foto_circulo: participantCircleShape,
+    formato_foto_lideranca_circulo: leadershipCircleShape,
+    formato_foto_participante_circulo: participantCircleShape,
     modelo_tabela_equipe: tableModel,
     fonte_base: String(input.fonte_base || DEFAULT_PDF_VISUAL_CONFIG.fonte_base).slice(0, 120),
     fonte_slogan: String(input.fonte_slogan || DEFAULT_PDF_VISUAL_CONFIG.fonte_slogan).slice(0, 120),
@@ -2950,13 +2963,13 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                     />
                   </label>
                   <label>
-                    Formato da foto no círculo
+                    Formato da foto da liderança no círculo
                     <select
-                      value={activePdfConfig.formato_foto_circulo}
+                      value={activePdfConfig.formato_foto_lideranca_circulo}
                       disabled={!canManageUsers}
                       onChange={(event) =>
                         actions.updateActivePdfVisualConfig({
-                          formato_foto_circulo: event.target.value as PdfPhotoShape
+                          formato_foto_lideranca_circulo: event.target.value as PdfPhotoShape
                         })
                       }
                     >
@@ -2968,6 +2981,24 @@ function SettingsScreen({ shell, actions }: { shell: any; actions: any }) {
                   </label>
                 </div>
                 <div className="grid-form three">
+                  <label>
+                    Formato da foto dos participantes no círculo
+                    <select
+                      value={activePdfConfig.formato_foto_participante_circulo}
+                      disabled={!canManageUsers}
+                      onChange={(event) =>
+                        actions.updateActivePdfVisualConfig({
+                          formato_foto_circulo: event.target.value as PdfPhotoShape,
+                          formato_foto_participante_circulo: event.target.value as PdfPhotoShape
+                        })
+                      }
+                    >
+                      <option value="SQUARE">Quadrado</option>
+                      <option value="ROUNDED">Bordas arredondadas</option>
+                      <option value="CIRCLE">Círculo</option>
+                      <option value="PASSPORT_3X4">3x4</option>
+                    </select>
+                  </label>
                   <label>
                     Foto liderança largura (mm)
                     <input
