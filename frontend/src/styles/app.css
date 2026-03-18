@@ -703,10 +703,56 @@ button:disabled {
   font-size: 10px;
 }
 
-.member-file-field input {
-  min-height: 28px;
-  padding: 4px 6px;
+.member-photo-upload {
+  position: relative;
+  display: block;
+}
+
+.member-photo-upload-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.member-photo-upload-btn {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.member-photo-upload:hover .member-photo-upload-btn {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--panel-soft);
+}
+
+.member-photo-upload-input:focus-visible + .member-photo-upload-btn {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.member-photo-upload-input:disabled {
+  cursor: not-allowed;
+}
+
+.member-photo-upload-input:disabled + .member-photo-upload-btn {
+  opacity: 0.62;
+  cursor: not-allowed;
+  border-style: dashed;
 }
 
 .member-main {

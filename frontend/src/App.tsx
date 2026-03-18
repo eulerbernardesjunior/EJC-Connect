@@ -4158,11 +4158,12 @@ function TeamDetailScreen({
                       ) : (
                         <div className="member-photo member-photo-empty">Sem foto</div>
                       )}
-                      <label className="file-field member-file-field">
-                        Foto
+                      <label className="member-photo-upload member-file-field">
                         <input
+                          className="member-photo-upload-input"
                           type="file"
                           accept="image/*"
+                          aria-label={`Enviar foto de ${member.nome_principal}`}
                           disabled={!canManageMembers}
                           onChange={(event) => {
                             const file = event.target.files?.[0];
@@ -4171,6 +4172,9 @@ function TeamDetailScreen({
                             actions.onMemberPhotoFileChange(encounterId, teamId, member, file);
                           }}
                         />
+                        <span className="member-photo-upload-btn">
+                          {member.foto_url ? "Trocar foto" : "Enviar foto"}
+                        </span>
                       </label>
                     </div>
                   )}
