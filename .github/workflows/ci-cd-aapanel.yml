@@ -13,7 +13,7 @@ env:
   HEALTH_URL_DEFAULT: "http://127.0.0.1:8080/api/health"
   PROJECT_NAME_DEFAULT: "ejc-connect"
   DEPLOY_HOST_DEFAULT: "177.185.240.238"
-  DEPLOY_USER_DEFAULT: "root"
+  DEPLOY_USER_DEFAULT: "ubuntu"
   DEPLOY_PORT_DEFAULT: "22"
 
 jobs:

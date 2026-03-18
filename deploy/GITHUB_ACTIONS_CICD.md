@@ -19,7 +19,7 @@ No seu WSL:
 chmod +x deploy/setup_cicd_ssh_key.sh
 AAPANEL_HOST=177.185.240.238 \
 AAPANEL_PORT=22 \
-AAPANEL_USER=root \
+AAPANEL_USER=ubuntu \
 AAPANEL_PASSWORD='SUA_SENHA' \
 bash deploy/setup_cicd_ssh_key.sh
 ```
@@ -37,7 +37,7 @@ Crie:
 
 - `AAPANEL_HOST` = `177.185.240.238` (opcional; atualmente o workflow usa este host fixo)
 - `AAPANEL_PORT` = `22` (opcional; atualmente o workflow usa esta porta fixa)
-- `AAPANEL_USER` = `root` (opcional; atualmente o workflow usa este usuario fixo)
+- `AAPANEL_USER` = `ubuntu` (opcional; atualmente o workflow usa este usuario fixo)
 - `AAPANEL_SSH_PRIVATE_KEY` = conteudo do arquivo `~/.ssh/ejc_connect_github_actions_ed25519` (recomendado)
 - `AAPANEL_SSH_PASSWORD` = senha SSH do servidor (opcional, fallback se nao usar chave)
 - `AAPANEL_APP_DIR` = `/www/wwwroot/ejc-connect` (opcional, recomendado)
