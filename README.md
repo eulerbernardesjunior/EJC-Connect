@@ -49,21 +49,50 @@ Tambem oferece:
 
 ---
 
-## 4. Como rodar localmente (WSL + Docker)
+## 4. Instalacao em 1 comando (Ubuntu/Debian)
 
-### 4.1 Pre-requisitos
+Instalador consolidado direto do GitHub (instala Docker + Compose, baixa o repo, gera `.env` e sobe o sistema):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eulerbernardesjunior/EJC-Connect/main/deploy/install_from_github.sh | bash
+```
+
+### 4.1 Variaveis opcionais no comando unico
+
+Exemplo customizando porta e admin:
+
+```bash
+APP_PORT=8080 ADMIN_EMAIL=admin@ejc.com.br ADMIN_PASSWORD='SenhaForte123' \
+curl -fsSL https://raw.githubusercontent.com/eulerbernardesjunior/EJC-Connect/main/deploy/install_from_github.sh | bash
+```
+
+Variaveis suportadas:
+- `REPO_URL` (padrao: repositorio oficial)
+- `BRANCH` (padrao: `main`)
+- `APP_DIR` (padrao: `/opt/ejc-connect`)
+- `APP_PORT` (padrao: `8080`)
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `JWT_SECRET`, `JWT_EXPIRES_IN`
+- `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
+- `OVERWRITE_ENV=1` para recriar `.env`
+
+---
+
+## 5. Como rodar localmente (WSL + Docker)
+
+### 5.1 Pre-requisitos
 
 - Docker funcionando no WSL
 - Porta web livre (padrao do projeto local: `8080`)
 
-### 4.2 Subir o sistema
+### 5.2 Subir o sistema
 
 ```bash
 cd "/mnt/c/Users/euler.junior/Documents/New project"
 docker compose up -d --build
 ```
 
-### 4.3 Validar servicos
+### 5.3 Validar servicos
 
 ```bash
 docker compose ps
@@ -76,7 +105,7 @@ Esperado no health:
 {"status":"ok"}
 ```
 
-### 4.4 Acesso no browser Windows
+### 5.4 Acesso no browser Windows
 
 - App: `http://localhost:8080`
 
@@ -84,7 +113,7 @@ Observacao: se existir Nginx/Apache no host usando porta 80, mantenha `APP_PORT=
 
 ---
 
-## 5. Fluxo funcional no painel
+## 6. Fluxo funcional no painel
 
 1. **Encontros**
 - criar encontro com nome, data inicio e data fim
@@ -107,7 +136,7 @@ Observacao: se existir Nginx/Apache no host usando porta 80, mantenha `APP_PORT=
 
 ---
 
-## 6. Importacao inteligente (XLSX/CSV)
+## 7. Importacao inteligente (XLSX/CSV)
 
 O importador identifica secoes e cargos para aplicar regra correta:
 
@@ -119,7 +148,7 @@ Se a importacao nao inserir registros, o sistema retorna detalhes de linhas e mo
 
 ---
 
-## 7. Regras de PDF (Quadrante)
+## 8. Regras de PDF (Quadrante)
 
 ### 7.1 Ordem editorial suportada
 
@@ -150,7 +179,7 @@ Cada conjunto pode ser salvo como template e ativado.
 
 ---
 
-## 8. Seguranca e controle de acesso
+## 9. Seguranca e controle de acesso
 
 - login obrigatorio
 - JWT para autenticacao
@@ -160,7 +189,7 @@ Cada conjunto pode ser salvo como template e ativado.
 
 ---
 
-## 9. Deploy em producao (aaPanel)
+## 10. Deploy em producao (aaPanel)
 
 Pipeline pronto no GitHub Actions:
 
@@ -178,7 +207,7 @@ Guia detalhado:
 
 ---
 
-## 10. Versionamento e releases
+## 11. Versionamento e releases
 
 Recomendacao simples:
 
@@ -194,7 +223,7 @@ git push origin ejc-connect-v2026.03.18
 
 ---
 
-## 11. Comandos uteis
+## 12. Comandos uteis
 
 ```bash
 # status
@@ -215,7 +244,7 @@ docker compose up -d --build
 
 ---
 
-## 12. Troubleshooting rapido
+## 13. Troubleshooting rapido
 
 ### `web` nao sobe / Nginx caiu
 
@@ -241,7 +270,6 @@ docker compose logs --tail=200 backend
 
 ---
 
-## 13. Licenca e autoria
+## 14. Licenca e autoria
 
 Projeto interno EJC. Ajuste este bloco conforme politica da equipe (licenca formal, responsaveis e contatos).
-
