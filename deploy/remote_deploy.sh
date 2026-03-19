@@ -28,7 +28,84 @@ else
   DOCKER_CMD="sudo docker"
 fi
 
-PROJECT_HASH="$(printf "%s" "$PROJECT_NAME" | md5sum | awk '{print $1}')"
+COMPOSE_PROJECT="$(printf "%s" "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-')"
+PROJECT_SAFE_NAME="$(printf "%s" "$PROJECT_NAME" | tr -c 'a-zA-Z0-9_.@-' '-')"
+DOCKER_BIN="$(command -v docker || echo /usr/bin/docker)"
+
+setup_systemd_autorestart() {
+  local health_url="$1"
+  local stack_unit="${PROJECT_SAFE_NAME}.service"
+  local heal_service="${PROJECT_SAFE_NAME}-healthcheck.service"
+  local heal_timer="${PROJECT_SAFE_NAME}-healthcheck.timer"
+  local heal_script="/usr/local/bin/${PROJECT_SAFE_NAME}-healthcheck.sh"
+
+  if ! command -v systemctl >/dev/null 2>&1 || ! systemctl list-unit-files >/dev/null 2>&1; then
+    echo "systemd nao detectado. Pulando configuracao de auto-start/auto-heal."
+    return 0
+  fi
+
+  sudo tee "/etc/systemd/system/${stack_unit}" >/dev/null <<EOF
+[Unit]
+Description=EJC Connect stack (${PROJECT_NAME})
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${APP_DIR}
+ExecStart=${DOCKER_BIN} compose -p ${COMPOSE_PROJECT} -f ${APP_DIR}/docker-compose.yml up -d --remove-orphans
+ExecStop=${DOCKER_BIN} compose -p ${COMPOSE_PROJECT} -f ${APP_DIR}/docker-compose.yml stop
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  sudo tee "${heal_script}" >/dev/null <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if curl -fsS --max-time 8 '${health_url}' >/dev/null 2>&1; then
+  exit 0
+fi
+${DOCKER_BIN} compose -p '${COMPOSE_PROJECT}' -f '${APP_DIR}/docker-compose.yml' up -d --remove-orphans
+sleep 3
+curl -fsS --max-time 12 '${health_url}' >/dev/null
+EOF
+  sudo chmod 755 "${heal_script}"
+
+  sudo tee "/etc/systemd/system/${heal_service}" >/dev/null <<EOF
+[Unit]
+Description=EJC Connect health self-heal (${PROJECT_NAME})
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${heal_script}
+EOF
+
+  sudo tee "/etc/systemd/system/${heal_timer}" >/dev/null <<EOF
+[Unit]
+Description=EJC Connect health timer (${PROJECT_NAME})
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+AccuracySec=20s
+Persistent=true
+Unit=${heal_service}
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable docker.service >/dev/null 2>&1 || true
+  sudo systemctl enable --now "${stack_unit}" >/dev/null
+  sudo systemctl enable --now "${heal_timer}" >/dev/null
+}
 
 sudo mkdir -p "$APP_DIR"
 sudo chown -R "$USER:$USER" "$APP_DIR"
@@ -62,7 +139,7 @@ for CONTAINER_NAME in \
   fi
 done
 
-$DOCKER_CMD compose -p "$PROJECT_HASH" -f "$APP_DIR/docker-compose.yml" up -d --build --remove-orphans
+$DOCKER_CMD compose -p "$COMPOSE_PROJECT" -f "$APP_DIR/docker-compose.yml" up -d --build --remove-orphans
 
 add_health_candidate() {
   local candidate="$1"
@@ -87,6 +164,9 @@ fi
 
 add_health_candidate "http://127.0.0.1:8080/api/health"
 
+PRIMARY_HEALTH_URL="${HEALTH_CANDIDATES[0]}"
+setup_systemd_autorestart "${PRIMARY_HEALTH_URL}"
+
 check_health_any() {
   local candidate
   for candidate in "${HEALTH_CANDIDATES[@]}"; do
@@ -108,8 +188,8 @@ sleep 2
 until check_health_any; do
   if [ "$ATTEMPT" -ge "$HEALTH_ATTEMPTS" ]; then
     echo "Health check falhou apos $HEALTH_ATTEMPTS tentativas. Candidatos testados: ${HEALTH_CANDIDATES[*]}"
-    $DOCKER_CMD compose -p "$PROJECT_HASH" -f "$APP_DIR/docker-compose.yml" ps || true
-    $DOCKER_CMD compose -p "$PROJECT_HASH" -f "$APP_DIR/docker-compose.yml" logs --tail=150 backend web || true
+    $DOCKER_CMD compose -p "$COMPOSE_PROJECT" -f "$APP_DIR/docker-compose.yml" ps || true
+    $DOCKER_CMD compose -p "$COMPOSE_PROJECT" -f "$APP_DIR/docker-compose.yml" logs --tail=150 backend web || true
     exit 1
   fi
   echo "Aguardando health check ($ATTEMPT/$HEALTH_ATTEMPTS): ${HEALTH_CANDIDATES[*]}"
@@ -119,4 +199,4 @@ done
 
 echo "Deploy concluido com sucesso."
 echo "Health check: $HEALTH_URL"
-$DOCKER_CMD compose -p "$PROJECT_HASH" -f "$APP_DIR/docker-compose.yml" ps
+$DOCKER_CMD compose -p "$COMPOSE_PROJECT" -f "$APP_DIR/docker-compose.yml" ps

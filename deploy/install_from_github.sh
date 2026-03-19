@@ -5,6 +5,7 @@ REPO_URL="${REPO_URL:-https://github.com/eulerbernardesjunior/EJC-Connect.git}"
 BRANCH="${BRANCH:-main}"
 APP_DIR="${APP_DIR:-/opt/ejc-connect}"
 APP_PORT="${APP_PORT:-8080}"
+PROJECT_NAME="${PROJECT_NAME:-ejc-connect}"
 
 POSTGRES_DB="${POSTGRES_DB:-ejc_connect}"
 POSTGRES_USER="${POSTGRES_USER:-ejc_connect}"
@@ -17,6 +18,9 @@ ADMIN_EMAIL="${ADMIN_EMAIL:-admin@ejc.local}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)}"
 
 OVERWRITE_ENV="${OVERWRITE_ENV:-0}"
+COMPOSE_PROJECT="$(printf "%s" "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-')"
+PROJECT_SAFE_NAME="$(printf "%s" "$PROJECT_NAME" | tr -c 'a-zA-Z0-9_.@-' '-')"
+DOCKER_BIN="$(command -v docker || echo /usr/bin/docker)"
 
 if [[ "$(id -u)" -eq 0 ]]; then
   IS_ROOT=1
@@ -94,17 +98,92 @@ wait_for_http_ok() {
 
 compose_up() {
   if as_root docker compose version >/dev/null 2>&1; then
-    as_root bash -lc "cd '${APP_DIR}' && docker compose up -d --build"
+    as_root bash -lc "cd '${APP_DIR}' && docker compose -p '${COMPOSE_PROJECT}' up -d --build"
     return
   fi
 
   if command -v docker-compose >/dev/null 2>&1; then
-    as_root bash -lc "cd '${APP_DIR}' && docker-compose up -d --build"
+    as_root bash -lc "cd '${APP_DIR}' && docker-compose -p '${COMPOSE_PROJECT}' up -d --build"
     return
   fi
 
   echo "Docker Compose nao encontrado (plugin ou docker-compose)." >&2
   exit 1
+}
+
+setup_systemd_autorestart() {
+  local health_url="http://127.0.0.1:${APP_PORT}/api/health"
+  local stack_unit="${PROJECT_SAFE_NAME}.service"
+  local heal_service="${PROJECT_SAFE_NAME}-healthcheck.service"
+  local heal_timer="${PROJECT_SAFE_NAME}-healthcheck.timer"
+  local heal_script="/usr/local/bin/${PROJECT_SAFE_NAME}-healthcheck.sh"
+
+  if ! command -v systemctl >/dev/null 2>&1 || ! systemctl list-unit-files >/dev/null 2>&1; then
+    log "systemd nao detectado. Pulando auto-start/auto-heal."
+    return 0
+  fi
+
+  as_root tee "/etc/systemd/system/${stack_unit}" >/dev/null <<EOF
+[Unit]
+Description=EJC Connect stack (${PROJECT_NAME})
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${APP_DIR}
+ExecStart=${DOCKER_BIN} compose -p ${COMPOSE_PROJECT} -f ${APP_DIR}/docker-compose.yml up -d --remove-orphans
+ExecStop=${DOCKER_BIN} compose -p ${COMPOSE_PROJECT} -f ${APP_DIR}/docker-compose.yml stop
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  as_root tee "${heal_script}" >/dev/null <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if curl -fsS --max-time 8 '${health_url}' >/dev/null 2>&1; then
+  exit 0
+fi
+${DOCKER_BIN} compose -p '${COMPOSE_PROJECT}' -f '${APP_DIR}/docker-compose.yml' up -d --remove-orphans
+sleep 3
+curl -fsS --max-time 12 '${health_url}' >/dev/null
+EOF
+  as_root chmod 755 "${heal_script}"
+
+  as_root tee "/etc/systemd/system/${heal_service}" >/dev/null <<EOF
+[Unit]
+Description=EJC Connect health self-heal (${PROJECT_NAME})
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${heal_script}
+EOF
+
+  as_root tee "/etc/systemd/system/${heal_timer}" >/dev/null <<EOF
+[Unit]
+Description=EJC Connect health timer (${PROJECT_NAME})
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+AccuracySec=20s
+Persistent=true
+Unit=${heal_service}
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  as_root systemctl daemon-reload
+  as_root systemctl enable docker.service >/dev/null 2>&1 || true
+  as_root systemctl enable --now "${stack_unit}" >/dev/null
+  as_root systemctl enable --now "${heal_timer}" >/dev/null
 }
 
 if [[ -r /etc/os-release ]]; then
@@ -202,6 +281,7 @@ fi
 
 log "Subindo stack Docker do EJC-Connect"
 compose_up
+setup_systemd_autorestart
 
 log "Aguardando servico responder"
 wait_for_http_ok "http://127.0.0.1:${APP_PORT}/api/health" 80 2
@@ -228,4 +308,3 @@ echo "- cd ${APP_DIR} && docker compose restart web backend"
 echo
 echo "Observacao:"
 echo "- Se o usuario atual nao conseguir rodar docker sem sudo, reabra o terminal (grupo docker)."
-
