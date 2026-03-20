@@ -54,7 +54,7 @@ export const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
     html: `
       <p>Gestão das equipes de trabalho.</p>
       <ul>
-        <li>Defina nome e ordem de impressão no PDF.</li>
+        <li>Defina nome da equipe e use <strong>Drag and Drop</strong> nos cards para ordenar a impressão no PDF.</li>
         <li>Use <strong>Abrir</strong> para acessar importação, membros e foto.</li>
         <li>As ações dependem das permissões do usuário.</li>
       </ul>
@@ -64,7 +64,8 @@ export const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
     title: "Ajuda - Círculos",
     html: `
       <p>Cadastro manual e importação geral de círculos.</p>
-      <p><strong>Campos do cadastro:</strong> Nome, Ordem, Cor e Nome escolhido do Círculo.</p>
+      <p><strong>Campos do cadastro:</strong> Nome, Cor e Nome escolhido do Círculo.</p>
+      <p><strong>Ordem de impressão:</strong> definida por <strong>Drag and Drop</strong> nos cards da lista.</p>
       <p><strong>Como o importador geral funciona:</strong> ele cria/atualiza os círculos e cadastra os membros como <strong>Jovens</strong>.</p>
       <ul>
         <li>Colunas obrigatórias: <strong>NOME</strong> e <strong>CIRCULO</strong> (ou <strong>COR</strong>).</li>

@@ -113,9 +113,13 @@ router.post(
       return res.status(400).json({ error: "Nome da equipe/circulo e obrigatorio." });
     }
 
-    const sortOrder = Number(ordem ?? 0);
-    if (!Number.isFinite(sortOrder)) {
-      return res.status(400).json({ error: "ordem invalida." });
+    let sortOrder = null;
+    if (ordem !== undefined && ordem !== null && String(ordem).trim() !== "") {
+      const parsedOrder = Number(ordem);
+      if (!Number.isFinite(parsedOrder)) {
+        return res.status(400).json({ error: "ordem invalida." });
+      }
+      sortOrder = parsedOrder;
     }
 
     const normalizedColor = corHex ? String(corHex).trim() : null;
@@ -129,6 +133,15 @@ router.post(
     const encounterResult = await pool.query("SELECT id FROM encontros WHERE id = $1 LIMIT 1", [encounterIdNumber]);
     if (encounterResult.rowCount === 0) {
       return res.status(404).json({ error: "Encontro nao encontrado." });
+    }
+
+    if (sortOrder === null) {
+      const maxOrderResult = await pool.query(
+        "SELECT COALESCE(MAX(ordem), 0) AS max_ordem FROM equipes WHERE encontro_id = $1 AND tipo = $2",
+        [encounterIdNumber, normalizedType]
+      );
+      const maxOrder = Number(maxOrderResult.rows[0]?.max_ordem || 0);
+      sortOrder = maxOrder + 1;
     }
 
     const result = await pool.query(

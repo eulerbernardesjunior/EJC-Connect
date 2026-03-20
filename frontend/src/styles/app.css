@@ -564,6 +564,34 @@ button:disabled {
   align-items: flex-start;
 }
 
+.entity-card.draggable {
+  cursor: grab;
+}
+
+.entity-card.draggable:active {
+  cursor: grabbing;
+}
+
+.entity-card.dragging {
+  opacity: 0.55;
+  transform: scale(0.99);
+}
+
+.entity-card.drop-target {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+
+.entity-rank {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.drag-helper {
+  margin: -4px 0 10px;
+}
+
 .entity-card.selectable {
   cursor: pointer;
 }

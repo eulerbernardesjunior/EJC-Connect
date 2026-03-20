@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, SyntheticEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, SyntheticEvent, useEffect, useMemo, useState } from "react";
 import {
   BrowserRouter,
   Link,
@@ -286,7 +286,6 @@ type CropState = {
 type TeamFormState = {
   id: number;
   nome: string;
-  ordem: number;
   corHex: string;
   slogan: string;
 };
@@ -467,7 +466,6 @@ const CROP_PRESETS = {
 const EMPTY_TEAM_FORM: TeamFormState = {
   id: 0,
   nome: "",
-  ordem: 0,
   corHex: "#8fbc8f",
   slogan: ""
 };
@@ -1505,7 +1503,6 @@ function AppShell() {
       encontroId: encounterId,
       nome: teamForm.nome,
       tipo: type,
-      ordem: Number(teamForm.ordem || 0),
       corHex: type === "CIRCULO" ? teamForm.corHex : null,
       slogan: type === "CIRCULO" ? teamForm.slogan : null
     };
@@ -1840,6 +1837,37 @@ function AppShell() {
       await persistPdfTemplates(next, "Template publicado e aplicado para as prévias/PDF.");
     } catch (err) {
       setError(parseError(err));
+    }
+  }
+
+  async function handleReorderTeams(encounterId: number, type: TeamType, orderedTeams: Team[]) {
+    if (!encounterId || !Array.isArray(orderedTeams) || orderedTeams.length === 0) return;
+
+    try {
+      for (let index = 0; index < orderedTeams.length; index += 1) {
+        const team = orderedTeams[index];
+        const nextOrder = index + 1;
+        if (Number(team.ordem || 0) === nextOrder) continue;
+
+        await authRequest(`/api/teams/${team.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nome: team.nome,
+            tipo: team.tipo,
+            ordem: nextOrder,
+            corHex: team.tipo === "CIRCULO" ? team.cor_hex : null,
+            slogan: team.tipo === "CIRCULO" ? team.slogan : null
+          })
+        });
+      }
+
+      await refreshTeamList(encounterId, type);
+      await refreshDashboard(encounterId);
+      success(type === "CIRCULO" ? "Ordem dos círculos atualizada." : "Ordem das equipes atualizada.");
+    } catch (err) {
+      setError(parseError(err));
+      await refreshTeamList(encounterId, type);
     }
   }
 
@@ -2224,6 +2252,7 @@ function AppShell() {
     rollbackTemplateByHistory,
     handleSaveTeam,
     handleDeleteTeam,
+    handleReorderTeams,
     handleSaveMember,
     handleEditMember,
     cancelMemberEdit: () => setMemberForm(EMPTY_MEMBER_FORM),
@@ -3741,6 +3770,9 @@ function TeamListScreen({
   const isCircle = type === "CIRCULO";
   const canManageTeams = shell.can(PERMISSIONS.TEAMS_MANAGE);
   const canImportCircles = shell.can(PERMISSIONS.CIRCLES_IMPORT);
+  const [orderedTeams, setOrderedTeams] = useState<Team[]>([]);
+  const [draggingTeamId, setDraggingTeamId] = useState<number | null>(null);
+  const [dropTargetTeamId, setDropTargetTeamId] = useState<number | null>(null);
 
   useEffect(() => {
     if (encounterId) {
@@ -3748,6 +3780,48 @@ function TeamListScreen({
       actions.setTeamForm(EMPTY_TEAM_FORM);
     }
   }, [encounterId, type]);
+
+  useEffect(() => {
+    setOrderedTeams(Array.isArray(shell.teams) ? shell.teams : []);
+  }, [shell.teams]);
+
+  function moveTeamBefore(sourceId: number, targetId: number, sourceList: Team[]) {
+    const fromIndex = sourceList.findIndex((team) => sameId(team.id, sourceId));
+    const toIndex = sourceList.findIndex((team) => sameId(team.id, targetId));
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return sourceList;
+    const next = [...sourceList];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  }
+
+  async function handleDropReorder(targetTeamId: number) {
+    if (!encounterId || !canManageTeams || !draggingTeamId) return;
+
+    const nextOrder = moveTeamBefore(draggingTeamId, targetTeamId, orderedTeams);
+    setDraggingTeamId(null);
+    setDropTargetTeamId(null);
+
+    if (nextOrder === orderedTeams) return;
+    setOrderedTeams(nextOrder);
+    await actions.handleReorderTeams(encounterId, type, nextOrder);
+  }
+
+  function handleDragStart(teamId: number) {
+    if (!canManageTeams) return;
+    setDraggingTeamId(teamId);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>, teamId: number) {
+    if (!canManageTeams || !draggingTeamId || sameId(teamId, draggingTeamId)) return;
+    event.preventDefault();
+    setDropTargetTeamId(teamId);
+  }
+
+  function handleDragEnd() {
+    setDraggingTeamId(null);
+    setDropTargetTeamId(null);
+  }
 
   if (!encounterId) return <Navigate to="/encounters" replace />;
   const encounter = shell.encounters.find((item: Encounter) => sameId(item.id, encounterId));
@@ -3792,17 +3866,6 @@ function TeamListScreen({
                 onChange={(event) => actions.setTeamForm((prev: TeamFormState) => ({ ...prev, nome: event.target.value }))}
               />
             </label>
-            <label>
-              Ordem de impressão
-              <input
-                type="number"
-                disabled={!canManageTeams}
-                value={shell.teamForm.ordem}
-                onChange={(event) =>
-                  actions.setTeamForm((prev: TeamFormState) => ({ ...prev, ordem: Number(event.target.value || "0") }))
-                }
-              />
-            </label>
             {isCircle && (
               <>
                 <label>
@@ -3835,12 +3898,27 @@ function TeamListScreen({
 
         <div>
           <h2>{title}s cadastrados</h2>
+          <p className="muted drag-helper">
+            {canManageTeams
+              ? "Arraste e solte os cards para definir a ordem de impressão no quadrante."
+              : "A ordem de impressão é definida por arrastar e soltar (somente para usuários com permissão de gestão)."}
+          </p>
           <div className="entity-list">
-            {shell.teams.map((team: Team) => (
-              <article key={team.id} className="entity-card">
+            {orderedTeams.map((team: Team, index: number) => (
+              <article
+                key={team.id}
+                className={`entity-card ${canManageTeams ? "draggable" : ""} ${
+                  draggingTeamId && sameId(team.id, draggingTeamId) ? "dragging" : ""
+                } ${dropTargetTeamId && sameId(team.id, dropTargetTeamId) ? "drop-target" : ""}`.trim()}
+                draggable={canManageTeams}
+                onDragStart={() => handleDragStart(team.id)}
+                onDragOver={(event) => handleDragOver(event, team.id)}
+                onDrop={() => handleDropReorder(team.id)}
+                onDragEnd={handleDragEnd}
+              >
                 <div>
                   <h3>{team.nome}</h3>
-                  <p>Ordem {team.ordem}</p>
+                  <p className="entity-rank">Ordem atual: {index + 1}</p>
                   {team.cor_hex && <span className="chip">{team.cor_hex}</span>}
                   {team.slogan && <p className="muted">{team.slogan}</p>}
                 </div>
@@ -3852,7 +3930,6 @@ function TeamListScreen({
                       actions.setTeamForm({
                         id: team.id,
                         nome: team.nome,
-                        ordem: team.ordem,
                         corHex: team.cor_hex || "#8fbc8f",
                         slogan: team.slogan || ""
                       })

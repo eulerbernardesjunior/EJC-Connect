@@ -165,24 +165,33 @@ function buildManualHtml() {
     <ol>
       <li>Clique no card <strong>Equipes</strong>.</li>
       <li>No formulário de equipe, digite o <strong>Nome</strong>.</li>
-      <li>Preencha a <strong>Ordem</strong> (número inteiro).</li>
       <li>Clique em <strong>Criar</strong>.</li>
+      <li>A equipe nova entra no final da lista.</li>
+      <li>Para mudar a ordem de impressão, use Drag and Drop na lista (passo 6.2).</li>
     </ol>
 
-    <h3>6.2 Editar equipe</h3>
+    <h3>6.2 Definir ordem de impressão por Drag and Drop</h3>
+    <ol>
+      <li>Na lista de equipes cadastradas, clique e segure o card da equipe.</li>
+      <li>Arraste para cima ou para baixo até a posição desejada.</li>
+      <li>Solte o card sobre a equipe de referência.</li>
+      <li>O sistema salva automaticamente a nova ordem de impressão.</li>
+    </ol>
+
+    <h3>6.3 Editar equipe</h3>
     <ol>
       <li>No card da equipe, clique em <strong>Editar</strong>.</li>
-      <li>Altere nome e/ou ordem.</li>
+      <li>Altere nome e demais campos disponíveis.</li>
       <li>Clique em <strong>Salvar edição</strong>.</li>
     </ol>
 
-    <h3>6.3 Excluir equipe</h3>
+    <h3>6.4 Excluir equipe</h3>
     <ol>
       <li>No card da equipe, clique em <strong>Excluir</strong>.</li>
       <li>Confirme no alerta.</li>
     </ol>
 
-    <h3>6.4 Abrir detalhe da equipe</h3>
+    <h3>6.5 Abrir detalhe da equipe</h3>
     <ol>
       <li>No card da equipe, clique em <strong>Abrir</strong>.</li>
       <li>Você entrará na tela de detalhe para fotos, importação e membros.</li>
@@ -294,15 +303,22 @@ function buildManualHtml() {
       <li>Preencha:
         <ul>
           <li>Nome</li>
-          <li>Ordem</li>
           <li>Cor (hex)</li>
           <li>Nome escolhido do Círculo</li>
         </ul>
       </li>
       <li>Clique em <strong>Criar</strong>.</li>
+      <li>O círculo novo entra no final da lista.</li>
     </ol>
 
-    <h3>9.2 Importação geral de círculos (lote)</h3>
+    <h3>9.2 Definir ordem dos círculos por Drag and Drop</h3>
+    <ol>
+      <li>Na lista de círculos cadastrados, clique e segure o card do círculo.</li>
+      <li>Arraste para a posição desejada.</li>
+      <li>Solte o card para salvar a nova ordem automaticamente.</li>
+    </ol>
+
+    <h3>9.3 Importação geral de círculos (lote)</h3>
     <ol>
       <li>Na tela principal de círculos, na área de importação geral, selecione o arquivo.</li>
       <li>Clique em <strong>Importar todos os círculos</strong>.</li>
@@ -319,7 +335,7 @@ function buildManualHtml() {
       </tbody>
     </table>
 
-    <h3>9.3 Abrir detalhe do círculo</h3>
+    <h3>9.4 Abrir detalhe do círculo</h3>
     <ol>
       <li>No card do círculo, clique em <strong>Abrir</strong>.</li>
       <li>Você entra na tela de cartaz, membros e fotos.</li>
@@ -432,7 +448,7 @@ function buildManualHtml() {
     <ol>
       <li>Início do dia: revisar dashboard e pendências de importação.</li>
       <li>Durante o dia: cadastrar/editar dados e validar prévias parciais.</li>
-      <li>Antes de fechar: validar assets e ordem de impressão.</li>
+      <li>Antes de fechar: validar assets e revisar ordem por Drag and Drop em equipes e círculos.</li>
       <li>Fechamento: gerar PDF final, revisar e registrar ajustes necessários.</li>
       <li>Encerrar sessão com <strong>Sair</strong>.</li>
     </ol>
