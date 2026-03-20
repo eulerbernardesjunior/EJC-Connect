@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, FormEvent, SyntheticEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, SyntheticEvent, useEffect, useMemo, useState } from "react";
 import {
   BrowserRouter,
   Link,
@@ -11,6 +11,25 @@ import {
   useParams
 } from "react-router-dom";
 import ReactCrop, { Crop, PercentCrop, PixelCrop, centerCrop, makeAspectCrop } from "react-image-crop";
+import {
+  closestCenter,
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import "react-image-crop/dist/ReactCrop.css";
 import { HELP_TOPICS, HelpTopicKey, resolveHelpTopic } from "./modules/help/topics";
 import { OnboardingGuide } from "./modules/onboarding/OnboardingGuide";
@@ -3745,6 +3764,82 @@ function EncounterHubScreen({ shell, actions }: { shell: any; actions: any }) {
   );
 }
 
+function SortableTeamCard({
+  team,
+  index,
+  canReorderTeams,
+  canManageTeams,
+  draggingTeamId,
+  dropTargetTeamId,
+  reorderBusy,
+  onEdit,
+  onOpen,
+  onDelete
+}: {
+  team: Team;
+  index: number;
+  canReorderTeams: boolean;
+  canManageTeams: boolean;
+  draggingTeamId: number | null;
+  dropTargetTeamId: number | null;
+  reorderBusy: boolean;
+  onEdit: () => void;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: team.id,
+    disabled: !canReorderTeams || reorderBusy
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition
+  };
+
+  return (
+    <article
+      ref={setNodeRef}
+      style={style}
+      className={`entity-card ${canReorderTeams ? "draggable" : ""} ${
+        (draggingTeamId && sameId(team.id, draggingTeamId)) || isDragging ? "dragging" : ""
+      } ${dropTargetTeamId && sameId(team.id, dropTargetTeamId) ? "drop-target" : ""}`.trim()}
+    >
+      <div className="entity-main">
+        {canReorderTeams && (
+          <button
+            type="button"
+            className="drag-handle"
+            aria-label={`Arrastar ${team.nome}`}
+            title="Arraste para reordenar"
+            disabled={reorderBusy}
+            {...attributes}
+            {...listeners}
+          >
+            ⋮⋮
+          </button>
+        )}
+        <div>
+          <h3>{team.nome}</h3>
+          <p className="entity-rank">Ordem atual: {index + 1}</p>
+          {team.cor_hex && <span className="chip">{team.cor_hex}</span>}
+          {team.slogan && <p className="muted">{team.slogan}</p>}
+        </div>
+      </div>
+      <div className="actions-row">
+        <button className="ghost" disabled={!canManageTeams} onClick={onEdit}>
+          Editar
+        </button>
+        <button className="ghost" onClick={onOpen}>
+          Abrir
+        </button>
+        <button className="danger-btn" disabled={!canManageTeams} onClick={onDelete}>
+          Excluir
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function TeamListScreen({
   type,
   title,
@@ -3768,7 +3863,15 @@ function TeamListScreen({
   const [orderedTeams, setOrderedTeams] = useState<Team[]>([]);
   const [draggingTeamId, setDraggingTeamId] = useState<number | null>(null);
   const [dropTargetTeamId, setDropTargetTeamId] = useState<number | null>(null);
-  const draggingTeamIdRef = useRef<number | null>(null);
+  const [reorderBusy, setReorderBusy] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 }
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates
+    })
+  );
 
   useEffect(() => {
     if (encounterId) {
@@ -3781,93 +3884,61 @@ function TeamListScreen({
     setOrderedTeams(Array.isArray(shell.teams) ? shell.teams : []);
   }, [shell.teams]);
 
-  function moveTeamBefore(sourceId: number, targetId: number, sourceList: Team[]) {
+  function moveTeamToIndex(sourceId: number, targetId: number, sourceList: Team[]) {
     const fromIndex = sourceList.findIndex((team) => sameId(team.id, sourceId));
     const toIndex = sourceList.findIndex((team) => sameId(team.id, targetId));
     if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return sourceList;
-    const next = [...sourceList];
-    const [moved] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, moved);
-    return next;
+    return arrayMove(sourceList, fromIndex, toIndex);
   }
 
-  async function handleDropReorder(sourceTeamId: number, targetTeamId: number) {
-    if (!encounterId || !canReorderTeams || !sourceTeamId) return;
-
-    const nextOrder = moveTeamBefore(sourceTeamId, targetTeamId, orderedTeams);
+  function clearDragState() {
     setDraggingTeamId(null);
-    draggingTeamIdRef.current = null;
     setDropTargetTeamId(null);
-
-    if (nextOrder === orderedTeams) return;
-    setOrderedTeams(nextOrder);
-    await actions.handleReorderTeams(encounterId, type, nextOrder);
   }
 
-  function handleDragStart(event: DragEvent<HTMLElement>, teamId: number) {
-    if (!canReorderTeams) return;
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", String(teamId));
-    draggingTeamIdRef.current = teamId;
-    setDraggingTeamId(teamId);
+  function handleDragStart(event: DragStartEvent) {
+    if (!canReorderTeams || reorderBusy) return;
+    const activeId = Number(event.active?.id);
+    if (!Number.isNaN(activeId) && activeId > 0) {
+      setDraggingTeamId(activeId);
+    }
   }
 
-  function resolveDraggedTeamId(event: DragEvent<HTMLElement>) {
-    const fromEvent = Number(event.dataTransfer.getData("text/plain"));
-    if (!Number.isNaN(fromEvent) && fromEvent > 0) return fromEvent;
-    if (draggingTeamIdRef.current && draggingTeamIdRef.current > 0) return draggingTeamIdRef.current;
-    return draggingTeamId;
-  }
-
-  function handleDragOver(event: DragEvent<HTMLElement>, teamId: number) {
-    if (!canReorderTeams) return;
-    event.preventDefault();
-    const draggedId = resolveDraggedTeamId(event);
-    if (!draggedId || sameId(teamId, draggedId)) {
+  function handleDragOver(event: DragOverEvent) {
+    if (!canReorderTeams || reorderBusy) return;
+    const activeId = Number(event.active?.id);
+    const overId = Number(event.over?.id);
+    if (!activeId || !overId || sameId(activeId, overId)) {
       setDropTargetTeamId(null);
       return;
     }
-    event.dataTransfer.dropEffect = "move";
-    setDropTargetTeamId(teamId);
+    setDropTargetTeamId(overId);
   }
 
-  async function handleDrop(event: DragEvent<HTMLElement>, targetTeamId: number) {
-    if (!canReorderTeams) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const draggedId = resolveDraggedTeamId(event);
-    if (!draggedId) {
-      handleDragEnd();
+  async function handleDragEnd(event: DragEndEvent) {
+    if (!canReorderTeams || reorderBusy) {
+      clearDragState();
       return;
     }
 
-    await handleDropReorder(draggedId, targetTeamId);
-  }
-
-  async function handleListDrop(event: DragEvent<HTMLElement>) {
-    if (!canReorderTeams) return;
-    event.preventDefault();
-    const draggedId = resolveDraggedTeamId(event);
-    if (!draggedId) {
-      handleDragEnd();
+    const activeId = Number(event.active?.id);
+    const overId = Number(event.over?.id);
+    if (!activeId || !overId || sameId(activeId, overId)) {
+      clearDragState();
       return;
     }
 
-    const fallbackTarget =
-      dropTargetTeamId ||
-      (orderedTeams.length > 0 ? orderedTeams[orderedTeams.length - 1].id : null);
-    if (!fallbackTarget || sameId(fallbackTarget, draggedId)) {
-      handleDragEnd();
-      return;
+    const nextOrder = moveTeamToIndex(activeId, overId, orderedTeams);
+    clearDragState();
+    if (nextOrder === orderedTeams || !encounterId) return;
+
+    setOrderedTeams(nextOrder);
+    setReorderBusy(true);
+    try {
+      await actions.handleReorderTeams(encounterId, type, nextOrder);
+    } finally {
+      setReorderBusy(false);
     }
-
-    await handleDropReorder(draggedId, fallbackTarget);
-  }
-
-  function handleDragEnd() {
-    setDraggingTeamId(null);
-    draggingTeamIdRef.current = null;
-    setDropTargetTeamId(null);
   }
 
   if (!encounterId) return <Navigate to="/encounters" replace />;
@@ -3950,35 +4021,27 @@ function TeamListScreen({
               ? "Arraste e solte os cards para definir a ordem de impressão no quadrante."
               : "A ordem de impressão é definida por arrastar e soltar (somente para usuários com permissão de gestão)."}
           </p>
-          <div
-            className="entity-list"
-            onDragOver={(event) => canReorderTeams && event.preventDefault()}
-            onDrop={handleListDrop}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={clearDragState}
           >
-            {orderedTeams.map((team: Team, index: number) => (
-              <article
-                key={team.id}
-                className={`entity-card ${canReorderTeams ? "draggable" : ""} ${
-                  draggingTeamId && sameId(team.id, draggingTeamId) ? "dragging" : ""
-                } ${dropTargetTeamId && sameId(team.id, dropTargetTeamId) ? "drop-target" : ""}`.trim()}
-                draggable={canReorderTeams}
-                onDragStart={(event) => handleDragStart(event, team.id)}
-                onDragEnter={(event) => handleDragOver(event, team.id)}
-                onDragOver={(event) => handleDragOver(event, team.id)}
-                onDrop={(event) => handleDrop(event, team.id)}
-                onDragEnd={handleDragEnd}
-              >
-                <div>
-                  <h3>{team.nome}</h3>
-                  <p className="entity-rank">Ordem atual: {index + 1}</p>
-                  {team.cor_hex && <span className="chip">{team.cor_hex}</span>}
-                  {team.slogan && <p className="muted">{team.slogan}</p>}
-                </div>
-                <div className="actions-row">
-                  <button
-                    className="ghost"
-                    disabled={!canManageTeams}
-                    onClick={() =>
+            <SortableContext items={orderedTeams.map((team: Team) => team.id)} strategy={verticalListSortingStrategy}>
+              <div className="entity-list">
+                {orderedTeams.map((team: Team, index: number) => (
+                  <SortableTeamCard
+                    key={team.id}
+                    team={team}
+                    index={index}
+                    canReorderTeams={canReorderTeams}
+                    canManageTeams={canManageTeams}
+                    draggingTeamId={draggingTeamId}
+                    dropTargetTeamId={dropTargetTeamId}
+                    reorderBusy={reorderBusy}
+                    onEdit={() =>
                       actions.setTeamForm({
                         id: team.id,
                         nome: team.nome,
@@ -3986,32 +4049,19 @@ function TeamListScreen({
                         slogan: team.slogan || ""
                       })
                     }
-                  >
-                    Editar
-                  </button>
-                  <button
-                    className="ghost"
-                    onClick={() =>
+                    onOpen={() =>
                       navigate(
                         type === "CIRCULO"
                           ? `/encounters/${encounterId}/circles/${team.id}`
                           : `/encounters/${encounterId}/teams/${team.id}`
                       )
                     }
-                  >
-                    Abrir
-                  </button>
-                  <button
-                    className="danger-btn"
-                    disabled={!canManageTeams}
-                    onClick={() => actions.handleDeleteTeam(encounterId, team.id, type)}
-                  >
-                    Excluir
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
+                    onDelete={() => actions.handleDeleteTeam(encounterId, team.id, type)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
 

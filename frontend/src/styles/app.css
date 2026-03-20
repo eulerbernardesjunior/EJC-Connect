@@ -564,12 +564,39 @@ button:disabled {
   align-items: flex-start;
 }
 
-.entity-card.draggable {
+.entity-main {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.drag-handle {
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  letter-spacing: -1px;
   cursor: grab;
 }
 
-.entity-card.draggable:active {
+.drag-handle:active {
   cursor: grabbing;
+}
+
+.drag-handle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.entity-card.draggable {
+  user-select: none;
 }
 
 .entity-card.dragging {
