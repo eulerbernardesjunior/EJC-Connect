@@ -3844,6 +3844,26 @@ function TeamListScreen({
     await handleDropReorder(draggedId, targetTeamId);
   }
 
+  async function handleListDrop(event: DragEvent<HTMLElement>) {
+    if (!canReorderTeams) return;
+    event.preventDefault();
+    const draggedId = resolveDraggedTeamId(event);
+    if (!draggedId) {
+      handleDragEnd();
+      return;
+    }
+
+    const fallbackTarget =
+      dropTargetTeamId ||
+      (orderedTeams.length > 0 ? orderedTeams[orderedTeams.length - 1].id : null);
+    if (!fallbackTarget || sameId(fallbackTarget, draggedId)) {
+      handleDragEnd();
+      return;
+    }
+
+    await handleDropReorder(draggedId, fallbackTarget);
+  }
+
   function handleDragEnd() {
     setDraggingTeamId(null);
     draggingTeamIdRef.current = null;
@@ -3930,7 +3950,11 @@ function TeamListScreen({
               ? "Arraste e solte os cards para definir a ordem de impressão no quadrante."
               : "A ordem de impressão é definida por arrastar e soltar (somente para usuários com permissão de gestão)."}
           </p>
-          <div className="entity-list" onDragOver={(event) => canReorderTeams && event.preventDefault()}>
+          <div
+            className="entity-list"
+            onDragOver={(event) => canReorderTeams && event.preventDefault()}
+            onDrop={handleListDrop}
+          >
             {orderedTeams.map((team: Team, index: number) => (
               <article
                 key={team.id}
