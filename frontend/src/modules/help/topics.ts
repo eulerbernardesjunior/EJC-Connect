@@ -65,6 +65,12 @@ export const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
     html: `
       <p>Cadastro manual e importação geral de círculos.</p>
       <p><strong>Campos do cadastro:</strong> Nome, Ordem, Cor e Nome escolhido do Círculo.</p>
+      <p><strong>Como o importador geral funciona:</strong> ele cria/atualiza os círculos e cadastra os membros como <strong>Jovens</strong>.</p>
+      <ul>
+        <li>Colunas obrigatórias: <strong>NOME</strong> e <strong>CIRCULO</strong> (ou <strong>COR</strong>).</li>
+        <li>Colunas opcionais: <strong>TELEFONE/CONTATO/CELULAR</strong> e <strong>PAROQUIA</strong>.</li>
+        <li>Se o círculo já existir no encontro, o sistema reaproveita e atualiza a cor quando necessário.</li>
+      </ul>
       <p><strong>Exemplo de planilha (importação geral):</strong></p>
       <table>
         <thead><tr><th>NOME</th><th>CIRCULO/COR</th><th>TELEFONE</th><th>PAROQUIA</th></tr></thead>
@@ -85,7 +91,29 @@ export const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
         <li>Importação XLSX/CSV com agrupamento por cargo.</li>
         <li>Prévia de PDF parcial da equipe.</li>
       </ul>
-      <p><strong>Regra de casais:</strong> cargos com "Tio/Tios" podem ser pareados automaticamente.</p>
+      <p><strong>Estrutura base reconhecida no arquivo:</strong></p>
+      <table>
+        <thead><tr><th>NOME</th><th>TELEFONE</th><th>PAROQUIA</th></tr></thead>
+        <tbody>
+          <tr><td>Jovens Coordenadores</td><td></td><td></td></tr>
+          <tr><td>Ana Paula</td><td>(11) 96666-1000</td><td>Santa Ana</td></tr>
+          <tr><td>Tios Coordenadores</td><td></td><td></td></tr>
+          <tr><td>Tio João</td><td>(11) 95555-2000</td><td>Santa Ana</td></tr>
+          <tr><td>Tia Maria</td><td>(11) 94444-3000</td><td>Santa Ana</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Regras por tipo de importação da equipe:</strong></p>
+      <ul>
+        <li><strong>Geral:</strong> somente cargos com <strong>Tio/Tios</strong> entram em modo casal; demais cargos entram como individual.</li>
+        <li><strong>Sala:</strong> mesma regra da Geral, porém rótulos isolados como <strong>EQUIPE DE SALA</strong> e cores isoladas (<strong>AMARELO, AZUL...</strong>) são ignorados automaticamente.</li>
+        <li><strong>Tios Carona:</strong> <strong>Jovens Coordenadores</strong> sempre individual; todos os demais cargos entram em modo casal.</li>
+      </ul>
+      <p><strong>Observações importantes:</strong></p>
+      <ul>
+        <li>Linha de cargo deve vir sem telefone.</li>
+        <li>Pessoas sem cargo definido geram aviso no resultado da importação.</li>
+        <li>Se um bloco de casal terminar com quantidade ímpar, a última pessoa é salva como individual.</li>
+      </ul>
     `
   },
   "circle-detail": {
@@ -96,6 +124,22 @@ export const HELP_TOPICS: Record<HelpTopicKey, HelpTopic> = {
         <li>Cartaz do círculo com crop A4.</li>
         <li>Fotos individuais (lideranças e participantes).</li>
         <li>Importação e cadastro manual agrupados por cargo.</li>
+      </ul>
+      <p><strong>Importação no círculo segue a mesma base de equipes:</strong> linha de cargo + linhas de pessoas.</p>
+      <table>
+        <thead><tr><th>NOME</th><th>TELEFONE</th><th>PAROQUIA</th></tr></thead>
+        <tbody>
+          <tr><td>Tios Circulistas</td><td></td><td></td></tr>
+          <tr><td>Tio Carlos</td><td>(11) 93333-4000</td><td>Santa Ana</td></tr>
+          <tr><td>Tia Paula</td><td>(11) 92222-5000</td><td>Santa Ana</td></tr>
+          <tr><td>Jovem Circulista</td><td></td><td></td></tr>
+          <tr><td>Bruno Alves</td><td>(11) 91111-6000</td><td>São José</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>Cargos com <strong>Tio/Tios</strong> entram em modo casal.</li>
+        <li>Cargos sem <strong>Tio/Tios</strong> entram como individual.</li>
+        <li><strong>Jovem Circulista</strong> deve estar em cargo próprio para ir ao quadro de liderança no PDF.</li>
       </ul>
       <p>Use o campo <strong>Nome escolhido do Círculo</strong> para personalizar a identidade no PDF.</p>
     `
