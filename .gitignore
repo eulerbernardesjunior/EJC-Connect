@@ -6,3 +6,9 @@ frontend/dist/
 .env
 backend/.env
 *.log
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
