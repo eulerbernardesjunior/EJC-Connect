@@ -39,6 +39,91 @@ const upload = multer({
   fileFilter: imageUploadFilter
 });
 
+router.post(
+  "/reorder",
+  requirePermission(PERMISSIONS.TEAMS_MANAGE),
+  asyncHandler(async (req, res) => {
+    if (hasTeamScopeAssignments(req.user)) {
+      return res.status(403).json({
+        error: "Reordenacao exige acesso global as equipes/circulos do encontro."
+      });
+    }
+
+    const encounterIdNumber = parsePositiveInt(req.body?.encounterId ?? req.body?.encontroId);
+    if (!encounterIdNumber) {
+      return res.status(400).json({ error: "encounterId invalido." });
+    }
+
+    const normalizedType = normalizeEnum(req.body?.tipo);
+    if (!TEAM_TYPES.has(normalizedType)) {
+      return res.status(400).json({ error: "tipo invalido. Use CIRCULO ou TRABALHO." });
+    }
+
+    const rawTeamIds = Array.isArray(req.body?.teamIds) ? req.body.teamIds : [];
+    const teamIds = rawTeamIds.map((value) => parsePositiveInt(value)).filter(Boolean);
+
+    if (teamIds.length === 0) {
+      return res.status(400).json({ error: "Informe teamIds com a ordem desejada." });
+    }
+
+    const uniqueTeamIds = new Set(teamIds);
+    if (uniqueTeamIds.size !== teamIds.length) {
+      return res.status(400).json({ error: "teamIds contem valores duplicados." });
+    }
+
+    const existing = await pool.query(
+      "SELECT id, nome FROM equipes WHERE encontro_id = $1 AND tipo = $2 ORDER BY ordem ASC, nome ASC",
+      [encounterIdNumber, normalizedType]
+    );
+
+    if (existing.rowCount !== teamIds.length) {
+      return res.status(400).json({
+        error: "A lista enviada deve conter todos os itens da tela para reordenacao."
+      });
+    }
+
+    const existingIds = new Set(existing.rows.map((row) => Number(row.id)));
+    for (const teamId of teamIds) {
+      if (!existingIds.has(teamId)) {
+        return res.status(400).json({
+          error: "A lista enviada possui IDs que nao pertencem ao encontro/tipo informado."
+        });
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (let index = 0; index < teamIds.length; index += 1) {
+        await client.query("UPDATE equipes SET ordem = $1 WHERE id = $2", [index + 1, teamIds[index]]);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    await logAudit({
+      req,
+      action: "UPDATE",
+      resourceType: normalizedType === "CIRCULO" ? "CIRCULO_ORDEM" : "EQUIPE_ORDEM",
+      encounterId: encounterIdNumber,
+      summary:
+        normalizedType === "CIRCULO"
+          ? "Ordem de impressao dos circulos atualizada (drag and drop)."
+          : "Ordem de impressao das equipes atualizada (drag and drop).",
+      details: {
+        tipo: normalizedType,
+        teamIds
+      }
+    });
+
+    return res.json({ success: true, total: teamIds.length });
+  })
+);
+
 router.get(
   "/",
   requirePermission(PERMISSIONS.TEAMS_VIEW),

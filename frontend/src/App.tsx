@@ -1844,23 +1844,15 @@ function AppShell() {
     if (!encounterId || !Array.isArray(orderedTeams) || orderedTeams.length === 0) return;
 
     try {
-      for (let index = 0; index < orderedTeams.length; index += 1) {
-        const team = orderedTeams[index];
-        const nextOrder = index + 1;
-        if (Number(team.ordem || 0) === nextOrder) continue;
-
-        await authRequest(`/api/teams/${team.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nome: team.nome,
-            tipo: team.tipo,
-            ordem: nextOrder,
-            corHex: team.tipo === "CIRCULO" ? team.cor_hex : null,
-            slogan: team.tipo === "CIRCULO" ? team.slogan : null
-          })
-        });
-      }
+      await authRequest("/api/teams/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          encounterId,
+          tipo: type,
+          teamIds: orderedTeams.map((team) => team.id)
+        })
+      });
 
       await refreshTeamList(encounterId, type);
       await refreshDashboard(encounterId);
@@ -3769,6 +3761,9 @@ function TeamListScreen({
   const navigate = useNavigate();
   const isCircle = type === "CIRCULO";
   const canManageTeams = shell.can(PERMISSIONS.TEAMS_MANAGE);
+  const canReorderTeams =
+    canManageTeams &&
+    (!Array.isArray(shell.currentUser?.teamScopes) || shell.currentUser.teamScopes.length === 0);
   const canImportCircles = shell.can(PERMISSIONS.CIRCLES_IMPORT);
   const [orderedTeams, setOrderedTeams] = useState<Team[]>([]);
   const [draggingTeamId, setDraggingTeamId] = useState<number | null>(null);
@@ -3796,7 +3791,7 @@ function TeamListScreen({
   }
 
   async function handleDropReorder(targetTeamId: number) {
-    if (!encounterId || !canManageTeams || !draggingTeamId) return;
+    if (!encounterId || !canReorderTeams || !draggingTeamId) return;
 
     const nextOrder = moveTeamBefore(draggingTeamId, targetTeamId, orderedTeams);
     setDraggingTeamId(null);
@@ -3807,15 +3802,39 @@ function TeamListScreen({
     await actions.handleReorderTeams(encounterId, type, nextOrder);
   }
 
-  function handleDragStart(teamId: number) {
-    if (!canManageTeams) return;
+  function handleDragStart(event: DragEvent<HTMLElement>, teamId: number) {
+    if (!canReorderTeams) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(teamId));
     setDraggingTeamId(teamId);
   }
 
+  function resolveDraggedTeamId(event: DragEvent<HTMLElement>) {
+    const fromEvent = Number(event.dataTransfer.getData("text/plain"));
+    if (!Number.isNaN(fromEvent) && fromEvent > 0) return fromEvent;
+    return draggingTeamId;
+  }
+
   function handleDragOver(event: DragEvent<HTMLElement>, teamId: number) {
-    if (!canManageTeams || !draggingTeamId || sameId(teamId, draggingTeamId)) return;
+    if (!canReorderTeams) return;
+    const draggedId = resolveDraggedTeamId(event);
+    if (!draggedId || sameId(teamId, draggedId)) return;
     event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
     setDropTargetTeamId(teamId);
+  }
+
+  async function handleDrop(event: DragEvent<HTMLElement>, targetTeamId: number) {
+    if (!canReorderTeams) return;
+    event.preventDefault();
+    const draggedId = resolveDraggedTeamId(event);
+    if (!draggedId) {
+      handleDragEnd();
+      return;
+    }
+
+    setDraggingTeamId(draggedId);
+    await handleDropReorder(targetTeamId);
   }
 
   function handleDragEnd() {
@@ -3899,7 +3918,7 @@ function TeamListScreen({
         <div>
           <h2>{title}s cadastrados</h2>
           <p className="muted drag-helper">
-            {canManageTeams
+            {canReorderTeams
               ? "Arraste e solte os cards para definir a ordem de impressão no quadrante."
               : "A ordem de impressão é definida por arrastar e soltar (somente para usuários com permissão de gestão)."}
           </p>
@@ -3907,13 +3926,13 @@ function TeamListScreen({
             {orderedTeams.map((team: Team, index: number) => (
               <article
                 key={team.id}
-                className={`entity-card ${canManageTeams ? "draggable" : ""} ${
+                className={`entity-card ${canReorderTeams ? "draggable" : ""} ${
                   draggingTeamId && sameId(team.id, draggingTeamId) ? "dragging" : ""
                 } ${dropTargetTeamId && sameId(team.id, dropTargetTeamId) ? "drop-target" : ""}`.trim()}
-                draggable={canManageTeams}
-                onDragStart={() => handleDragStart(team.id)}
+                draggable={canReorderTeams}
+                onDragStart={(event) => handleDragStart(event, team.id)}
                 onDragOver={(event) => handleDragOver(event, team.id)}
-                onDrop={() => handleDropReorder(team.id)}
+                onDrop={(event) => handleDrop(event, team.id)}
                 onDragEnd={handleDragEnd}
               >
                 <div>
