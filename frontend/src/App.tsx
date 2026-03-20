@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, FormEvent, SyntheticEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, SyntheticEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrowserRouter,
   Link,
@@ -3768,6 +3768,7 @@ function TeamListScreen({
   const [orderedTeams, setOrderedTeams] = useState<Team[]>([]);
   const [draggingTeamId, setDraggingTeamId] = useState<number | null>(null);
   const [dropTargetTeamId, setDropTargetTeamId] = useState<number | null>(null);
+  const draggingTeamIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (encounterId) {
@@ -3790,11 +3791,12 @@ function TeamListScreen({
     return next;
   }
 
-  async function handleDropReorder(targetTeamId: number) {
-    if (!encounterId || !canReorderTeams || !draggingTeamId) return;
+  async function handleDropReorder(sourceTeamId: number, targetTeamId: number) {
+    if (!encounterId || !canReorderTeams || !sourceTeamId) return;
 
-    const nextOrder = moveTeamBefore(draggingTeamId, targetTeamId, orderedTeams);
+    const nextOrder = moveTeamBefore(sourceTeamId, targetTeamId, orderedTeams);
     setDraggingTeamId(null);
+    draggingTeamIdRef.current = null;
     setDropTargetTeamId(null);
 
     if (nextOrder === orderedTeams) return;
@@ -3806,20 +3808,25 @@ function TeamListScreen({
     if (!canReorderTeams) return;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", String(teamId));
+    draggingTeamIdRef.current = teamId;
     setDraggingTeamId(teamId);
   }
 
   function resolveDraggedTeamId(event: DragEvent<HTMLElement>) {
     const fromEvent = Number(event.dataTransfer.getData("text/plain"));
     if (!Number.isNaN(fromEvent) && fromEvent > 0) return fromEvent;
+    if (draggingTeamIdRef.current && draggingTeamIdRef.current > 0) return draggingTeamIdRef.current;
     return draggingTeamId;
   }
 
   function handleDragOver(event: DragEvent<HTMLElement>, teamId: number) {
     if (!canReorderTeams) return;
-    const draggedId = resolveDraggedTeamId(event);
-    if (!draggedId || sameId(teamId, draggedId)) return;
     event.preventDefault();
+    const draggedId = resolveDraggedTeamId(event);
+    if (!draggedId || sameId(teamId, draggedId)) {
+      setDropTargetTeamId(null);
+      return;
+    }
     event.dataTransfer.dropEffect = "move";
     setDropTargetTeamId(teamId);
   }
@@ -3827,18 +3834,19 @@ function TeamListScreen({
   async function handleDrop(event: DragEvent<HTMLElement>, targetTeamId: number) {
     if (!canReorderTeams) return;
     event.preventDefault();
+    event.stopPropagation();
     const draggedId = resolveDraggedTeamId(event);
     if (!draggedId) {
       handleDragEnd();
       return;
     }
 
-    setDraggingTeamId(draggedId);
-    await handleDropReorder(targetTeamId);
+    await handleDropReorder(draggedId, targetTeamId);
   }
 
   function handleDragEnd() {
     setDraggingTeamId(null);
+    draggingTeamIdRef.current = null;
     setDropTargetTeamId(null);
   }
 
@@ -3922,7 +3930,7 @@ function TeamListScreen({
               ? "Arraste e solte os cards para definir a ordem de impressão no quadrante."
               : "A ordem de impressão é definida por arrastar e soltar (somente para usuários com permissão de gestão)."}
           </p>
-          <div className="entity-list">
+          <div className="entity-list" onDragOver={(event) => canReorderTeams && event.preventDefault()}>
             {orderedTeams.map((team: Team, index: number) => (
               <article
                 key={team.id}
@@ -3931,6 +3939,7 @@ function TeamListScreen({
                 } ${dropTargetTeamId && sameId(team.id, dropTargetTeamId) ? "drop-target" : ""}`.trim()}
                 draggable={canReorderTeams}
                 onDragStart={(event) => handleDragStart(event, team.id)}
+                onDragEnter={(event) => handleDragOver(event, team.id)}
                 onDragOver={(event) => handleDragOver(event, team.id)}
                 onDrop={(event) => handleDrop(event, team.id)}
                 onDragEnd={handleDragEnd}
