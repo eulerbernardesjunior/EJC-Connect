@@ -10,6 +10,7 @@ import { assetRoutes } from "./assets.js";
 import { authRoutes } from "./auth.js";
 import { settingsRoutes } from "./settings.js";
 import { auditRoutes } from "./audit.js";
+import { manualRoutes } from "./manual.js";
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/assets", assetRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/audit", auditRoutes);
+router.use("/manual", manualRoutes);
 
 export { router as apiRoutes };

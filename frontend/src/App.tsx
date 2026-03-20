@@ -2090,6 +2090,23 @@ function AppShell() {
     }
   }
 
+  async function handleDownloadSystemManual() {
+    try {
+      const blob = await requestBlob("/api/manual/system", token);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = "manual_ejc_connect.pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      success("Download do manual iniciado.");
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
   async function handleUploadTeamTitleArt(encounterId: number, type: TeamType, teamId: number, file: File | null) {
     if (!file) return;
     const formData = new FormData();
@@ -2331,6 +2348,9 @@ function AppShell() {
         </div>
         <button className="theme-toggle" onClick={handleLogout}>
           Sair
+        </button>
+        <button className="theme-toggle" onClick={handleDownloadSystemManual}>
+          Baixar manual
         </button>
         <button
           className="theme-toggle"
