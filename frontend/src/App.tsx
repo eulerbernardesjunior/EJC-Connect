@@ -3791,6 +3791,13 @@ function SortableTeamCard({
     id: team.id,
     disabled: !canReorderTeams || reorderBusy
   });
+  const dragActivatorProps =
+    canReorderTeams && !reorderBusy
+      ? {
+          ...attributes,
+          ...listeners
+        }
+      : {};
   const style = {
     transform: CSS.Transform.toString(transform),
     transition
@@ -3804,19 +3811,11 @@ function SortableTeamCard({
         (draggingTeamId && sameId(team.id, draggingTeamId)) || isDragging ? "dragging" : ""
       } ${dropTargetTeamId && sameId(team.id, dropTargetTeamId) ? "drop-target" : ""}`.trim()}
     >
-      <div className="entity-main">
+      <div className={`entity-main ${canReorderTeams ? "drag-activator" : ""}`} {...dragActivatorProps}>
         {canReorderTeams && (
-          <button
-            type="button"
-            className="drag-handle"
-            aria-label={`Arrastar ${team.nome}`}
-            title="Arraste para reordenar"
-            disabled={reorderBusy}
-            {...attributes}
-            {...listeners}
-          >
+          <span className="drag-handle" aria-hidden="true">
             ⋮⋮
-          </button>
+          </span>
         )}
         <div>
           <h3>{team.nome}</h3>
